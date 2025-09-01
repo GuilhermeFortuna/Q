@@ -46,4 +46,27 @@ class PlotWindow(QMainWindow):
         self.plot.addItem(line)
 
 
-if __name__ == '__main__':pass
+if __name__ == '__main__':
+    import sys
+    from datetime import datetime
+    from backtester.data import CandleData
+
+    # Data parameters
+    DATA_PATH = r'F:\New_Backup_03_2025\PyQuant\data\ccm_60min_atualizado.csv'
+    TIMEFRAME = '60min'
+    DATE_FROM = datetime( 2020, 1, 1 )
+    DATE_TO = datetime.today()
+
+    candles = CandleData(symbol='CCM', timeframe=TIMEFRAME)
+    candle_data = candles.import_from_csv(DATA_PATH)
+    candle_data = candle_data.loc[
+        (candle_data.index >= DATE_FROM) & (candle_data.index <= DATE_TO)
+    ].copy()
+    candle_data.insert(0, 'time', list(range(len(candle_data))))
+
+    q_app = QApplication( sys.argv )
+    plot_window = PlotWindow()
+    plot_window.create_candlestick_plot( candle_data )
+    # plot_window.create_line_plot(x=x, y=y, name='Close', color='yellow', width=2)
+    plot_window.show()
+    sys.exit( q_app.exec() )
