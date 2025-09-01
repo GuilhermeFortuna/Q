@@ -2,6 +2,32 @@ version = 1
 revision = 3
 requires-python = "==3.10"
 
+[manifest]
+members = [
+    "backtester",
+    "q",
+    "visualizer",
+]
+
+[[package]]
+name = "backtester"
+version = "0.1.0"
+source = { editable = "backtester" }
+dependencies = [
+    { name = "metatrader5" },
+    { name = "numpy" },
+    { name = "pandas-ta" },
+    { name = "tqdm" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "metatrader5", specifier = ">=5.0.5200" },
+    { name = "numpy", specifier = ">=1.26.4" },
+    { name = "pandas-ta", specifier = "==0.3.14b0" },
+    { name = "tqdm", specifier = ">=4.67.1" },
+]
+
 [[package]]
 name = "black"
 version = "25.1.0"
@@ -285,6 +311,7 @@ name = "q"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "backtester" },
     { name = "black" },
     { name = "flask" },
     { name = "metatrader5" },
@@ -294,10 +321,12 @@ dependencies = [
     { name = "pyside6" },
     { name = "setuptools" },
     { name = "tqdm" },
+    { name = "visualizer" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "backtester", editable = "backtester" },
     { name = "black", specifier = ">=25.1.0" },
     { name = "flask", specifier = "==3.0.3" },
     { name = "metatrader5", specifier = ">=5.0.5200" },
@@ -307,6 +336,7 @@ requires-dist = [
     { name = "pyside6", specifier = "==6.7.2" },
     { name = "setuptools", specifier = ">=80.9.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
+    { name = "visualizer", editable = "visualizer" },
 ]
 
 [[package]]
@@ -375,6 +405,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/95/32/1a225d6164441be760d75c2c42e2780dc0873fe382da3e98a2e1e48361e5/tzdata-2025.2.tar.gz", hash = "sha256:b60a638fcc0daffadf82fe0f57e53d06bdec2f36c4df66280ae79bce6bd6f2b9", size = 196380, upload-time = "2025-03-23T13:54:43.652Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/23/c7abc0ca0a1526a0774eca151daeb8de62ec457e77262b66b359c3c7679e/tzdata-2025.2-py2.py3-none-any.whl", hash = "sha256:1a403fada01ff9221ca8044d701868fa132215d84beb92242d9acd2147f667a8", size = 347839, upload-time = "2025-03-23T13:54:41.845Z" },
+]
+
+[[package]]
+name = "visualizer"
+version = "0.1.0"
+source = { editable = "visualizer" }
+dependencies = [
+    { name = "flask" },
+    { name = "pyqtgraph" },
+    { name = "pyside6" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "flask", specifier = "==3.0.3" },
+    { name = "pyqtgraph", specifier = "==0.13.7" },
+    { name = "pyside6", specifier = "==6.7.2" },
 ]
 
 [[package]]

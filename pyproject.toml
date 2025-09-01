@@ -12,9 +12,21 @@ dependencies = [
     "tqdm>=4.67.1",
     "pandas-ta==0.3.14b0",
     "setuptools>=80.9.0",
-    "numpy>=1.26.4"
+    "numpy>=1.26.4",
+    "backtester",
+    "visualizer",
 ]
 
 [tool.black]
 line-length = 88
 skip-string-normalization = true
+
+[tool.uv.workspace]
+members = [
+    "backtester",
+    "visualizer",
+]
+
+[tool.uv.sources]
+backtester = { workspace = true }
+visualizer = { workspace = true }

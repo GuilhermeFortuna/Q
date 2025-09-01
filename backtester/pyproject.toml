@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backtester"
+version = "0.1.0"
+description = "Backtesting engine for trading strategies"
+dependencies = [
+    "metatrader5>=5.0.5200",
+    "numpy>=1.26.4",
+    "tqdm>=4.67.1",
+    "pandas-ta==0.3.14b0",
+]
+
+[tool.setuptools]
+py-modules = ["data", "engine", "strategy", "trades", "utils"]

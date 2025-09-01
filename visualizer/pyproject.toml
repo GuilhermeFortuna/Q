@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visualizer"
+version = "0.1.0"
+description = "Market data visualization tools"
+dependencies = [
+    "pyqtgraph==0.13.7",
+    "pyside6==6.7.2",
+    "flask==3.0.3",
+]
+
+[tool.setuptools]
+py-modules = ["window"]
