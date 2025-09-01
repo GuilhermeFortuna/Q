@@ -1,5 +1,5 @@
-from visualizer.window import PlotWindow
-from visualizer.plots import CandlestickItem, LinePlotItem
+from src.visualizer.windows.plot_data import PlotWindow
+from src.visualizer.plots import CandlestickItem, LinePlotItem
 import pandas as pd
 
 __all__ = ['PlotWindow', 'create_candlestick_plot', 'create_line_plot', 'create_plot_window', 'show_candlestick', 'show_line_plot']
@@ -97,7 +97,7 @@ def create_candlestick_plot(ohlc_data: pd.DataFrame, window: PlotWindow = None) 
         _ensure_qapplication()  # Ensure QApplication exists
         window = create_plot_window("Candlestick Chart")
 
-    window.create_candlestick_plot(ohlc_data)
+    window.add_candlestick_plot( ohlc_data )
     return window
 
 def create_line_plot(x, y, name: str = "Line", color: str = 'yellow',
@@ -120,7 +120,7 @@ def create_line_plot(x, y, name: str = "Line", color: str = 'yellow',
         _ensure_qapplication()  # Ensure QApplication exists
         window = create_plot_window(f"Line Chart - {name}")
 
-    window.create_line_plot(x, y, name, color, width)
+    window.add_line_plot( x, y, name, color, width )
     return window
 
 def show_candlestick(ohlc_data: pd.DataFrame, title: str = "Candlestick Chart",

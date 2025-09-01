@@ -9,9 +9,10 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from backtester.data import MarketData, CandleData, TickData
-from backtester.strategy import TradingStrategy, MaCrossover
-from backtester.trades import TradeRegistry, TradeOrder
+from src.backtester.data import MarketData, CandleData, TickData
+from src.backtester.strategy import TradingStrategy, MaCrossover
+from src.backtester.trades import TradeRegistry, TradeOrder
+from src.bridge import data_manager
 
 
 @dataclass
@@ -243,6 +244,9 @@ class Engine:
                 datetime_val=self.data['candle'].datetime_index[i],
                 comment='No more data to process. Closing open trade.',
             )
+        
+        # Store results in the shared DataManager for visualization/bridge
+        data_manager.set_backtest_results(self.trades)
         return self.trades
 
 if __name__ == '__main__':

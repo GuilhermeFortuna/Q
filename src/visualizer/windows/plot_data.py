@@ -1,10 +1,13 @@
 import pyqtgraph as pg
-from PySide6.QtWidgets import QApplication, QMainWindow
-from visualizer.plots import CandlestickItem
-from visualizer.plots import LinePlotItem
+from PySide6.QtWidgets import QApplication
+from src.visualizer.plots import CandlestickItem
+from src.visualizer.plots import LinePlotItem
 import pandas as pd
 
-class PlotWindow(QMainWindow):
+from src.visualizer.windows.base import BaseWindow
+
+
+class PlotWindow(BaseWindow):
     PLOT_TYPE_MAP = {
         'candlestick': CandlestickItem,
         'line': LinePlotItem,
@@ -17,13 +20,12 @@ class PlotWindow(QMainWindow):
         self.setWindowTitle("Market Data")
 
         self.data = data
-        #self.df = pd.DataFrame(self.data)
+        # self.df = pd.DataFrame(self.data)
 
         # Create a plot item
         self.plot = self.graphWidget.addPlot(row=0, col=0)
 
-
-    def _load_data_from_file(self, file_path):
+    def _load_data_from_file(self, file_path):  # TODO: Maybe remove this private method
         """Loads and prepares data from a CSV file."""
         try:
             self.data = pd.read_csv(file_path)
@@ -35,26 +37,29 @@ class PlotWindow(QMainWindow):
             print(f"Error loading data: {e}")
             return False
 
-    def create_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
+    def add_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
         if 'time' not in ohlc.columns:
             ohlc['time'] = ohlc.index.copy()
         candlestick = CandlestickItem(ohlc)
         self.plot.addItem(candlestick)
 
-    def create_line_plot(self, x, y, name, color, width):
+    def add_line_plot(self, x, y, name, color, width) -> None:
         line = LinePlotItem(x, y, name=name, color=color, width=width)
         self.plot.addItem(line)
+
+    def add_histogram_plot(self, data) -> None:
+        pass
 
 
 if __name__ == '__main__':
     import sys
     from datetime import datetime
-    from backtester.data import CandleData
+    from src.backtester import CandleData
 
     # Data parameters
     DATA_PATH = r'F:\New_Backup_03_2025\PyQuant\data\ccm_60min_atualizado.csv'
     TIMEFRAME = '60min'
-    DATE_FROM = datetime( 2020, 1, 1 )
+    DATE_FROM = datetime(2020, 1, 1)
     DATE_TO = datetime.today()
 
     candles = CandleData(symbol='CCM', timeframe=TIMEFRAME)
@@ -64,9 +69,9 @@ if __name__ == '__main__':
     ].copy()
     candle_data.insert(0, 'time', list(range(len(candle_data))))
 
-    q_app = QApplication( sys.argv )
+    q_app = QApplication(sys.argv)
     plot_window = PlotWindow()
-    plot_window.create_candlestick_plot( candle_data )
+    plot_window.add_candlestick_plot(candle_data)
     # plot_window.create_line_plot(x=x, y=y, name='Close', color='yellow', width=2)
     plot_window.show()
-    sys.exit( q_app.exec() )
+    sys.exit(q_app.exec())

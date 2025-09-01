@@ -61,10 +61,14 @@ class MarketData(ABC):
 
 
 class CandleData(MarketData):
-    def __init__(self, symbol: str, timeframe: str, data: Optional[pd.DataFrame] = None):
+    def __init__(
+        self, symbol: str, timeframe: str, data: Optional[pd.DataFrame] = None
+    ):
         super().__init__(symbol=symbol, data=data)
         if not isinstance(timeframe, str):
-            raise TypeError(f'timeframe must be a string. Received obj of type: {type(timeframe)}')
+            raise TypeError(
+                f'timeframe must be a string. Received obj of type: {type(timeframe)}'
+            )
 
         self.timeframe = timeframe
 
@@ -103,7 +107,12 @@ class CandleData(MarketData):
             raise ValueError('No data provided. Please provide data to format.')
 
     @staticmethod
-    def import_from_mt5(mt5_symbol: str, mt5_timeframe: int, date_from: dt.datetime, date_to: dt.datetime):
+    def import_from_mt5(
+        mt5_symbol: str,
+        mt5_timeframe: int,
+        date_from: dt.datetime,
+        date_to: dt.datetime,
+    ):
         mt5.initialize()
         try:
             df = CandleData.format_candle_data_from_mt5(
@@ -125,7 +134,9 @@ class CandleData(MarketData):
             try:
                 df = pd.read_csv(path, decimal=',', encoding=enc)
                 df.columns = ['datetime', 'open', 'high', 'low', 'close', 'volume']
-                df['datetime'] = pd.to_datetime(df['datetime'], format='%d/%m/%Y %H:%M', errors='raise')
+                df['datetime'] = pd.to_datetime(
+                    df['datetime'], format='%d/%m/%Y %H:%M', errors='raise'
+                )
                 df = df.set_index('datetime', inplace=False)[::-1].copy()
                 return df
 
@@ -158,7 +169,9 @@ class TickData(MarketData):
         return df.loc[~(df['price'] == 0)].copy()
 
     @staticmethod
-    def generate_date_ranges(date_from: dt.datetime, date_to: dt.datetime, step_days: int) -> list:
+    def generate_date_ranges(
+        date_from: dt.datetime, date_to: dt.datetime, step_days: int
+    ) -> list:
         """
         Divides a continuous datetime range into equal chunks based on the specified step_days.
         The function ensures each chunk contains evenly distributed timestamps covering
@@ -174,20 +187,41 @@ class TickData(MarketData):
                  list represents a chunk of datetime ranges.
         """
         import math
-        df, dt = date_from.replace(hour=0, minute=0, second=0), date_to.replace(hour=23, minute=59, second=59)
+
+        df, dt = date_from.replace(hour=0, minute=0, second=0), date_to.replace(
+            hour=23, minute=59, second=59
+        )
         date_range = pd.date_range(df, dt)
         div = math.ceil(len(date_range) / step_days)
         step = math.ceil(len(date_range) / div)
         return [
-            (date_range[i], date_range[i + step] if (i + step) <= len(date_range) - 1 else date_range[-1])
+            (
+                date_range[i],
+                (
+                    date_range[i + step]
+                    if (i + step) <= len(date_range) - 1
+                    else date_range[-1]
+                ),
+            )
             for i in range(0, len(date_range) - 1, step)
         ]
 
     def import_from_mt5(
-            self, mt5_symbol: str, date_from: dt.datetime, date_to: dt.datetime, batch_import: bool = False, **kwargs
+        self,
+        mt5_symbol: str,
+        date_from: dt.datetime,
+        date_to: dt.datetime,
+        batch_import: bool = False,
+        **kwargs,
     ) -> pd.DataFrame:
-        def import_ticks(mt5_symbol: str, date_from: dt.datetime, date_to: dt.datetime) -> pd.DataFrame:
-            return self._format_ticks(data=mt5.copy_ticks_range(mt5_symbol, date_from, date_to, mt5.COPY_TICKS_ALL))
+        def import_ticks(
+            mt5_symbol: str, date_from: dt.datetime, date_to: dt.datetime
+        ) -> pd.DataFrame:
+            return self._format_ticks(
+                data=mt5.copy_ticks_range(
+                    mt5_symbol, date_from, date_to, mt5.COPY_TICKS_ALL
+                )
+            )
 
         # Connect to mt5 terminal
         TickData.connect_to_mt5()
@@ -196,11 +230,23 @@ class TickData(MarketData):
         if batch_import:
 
             step_days = kwargs.get('step_days', TickData.DEFAULT_BATCH_IMPORT_STEP_DAYS)
-            datetime_chunks = TickData.generate_date_ranges(date_from, date_to, step_days=step_days)
+            datetime_chunks = TickData.generate_date_ranges(
+                date_from, date_to, step_days=step_days
+            )
             df = pd.DataFrame()
-            pbar = tqdm(total=len(datetime_chunks), desc='Importing tick data', colour='yellow')
+            pbar = tqdm(
+                total=len(datetime_chunks), desc='Importing tick data', colour='yellow'
+            )
             for start, end in datetime_chunks:
-                df = pd.concat([df, import_ticks(mt5_symbol=mt5_symbol, date_from=start, date_to=end)], axis='index')
+                df = pd.concat(
+                    [
+                        df,
+                        import_ticks(
+                            mt5_symbol=mt5_symbol, date_from=start, date_to=end
+                        ),
+                    ],
+                    axis='index',
+                )
                 pbar.update(1)
 
             mt5.shutdown()
@@ -211,6 +257,7 @@ class TickData(MarketData):
             df = import_ticks(mt5_symbol, date_from, date_to)
             mt5.shutdown()
             return df
+
 
 if __name__ == '__main__':
 

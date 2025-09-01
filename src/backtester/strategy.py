@@ -3,7 +3,7 @@ from typing import Union, Callable
 
 import pandas_ta as pta
 
-from backtester.trades import TradeOrder
+from src.backtester.trades import TradeOrder
 
 
 class TradingStrategy(ABC):

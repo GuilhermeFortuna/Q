@@ -58,13 +58,14 @@ The backtesting process follows these steps:
 Here is a simplified example of how to set up and run a backtest using the `MaCrossover` strategy.
 
 ```python
-from backtester.core.data import CandleData
-from backtester.core.strategy import MaCrossover
-from backtester.core.engine import Engine, BacktestParameters
+from src.backtester import CandleData
+from src.backtester import MaCrossover
+from src.backtester import Engine, BacktestParameters
+
 
 # 1. Load Data
 # Assumes you have a 'MSFT_M5.csv' file with candle data.
-msft_data = CandleData(symbol='MSFT', timeframe='M5')
+msft_data = CandleData( symbol='MSFT', timeframe='M5' )
 msft_data.import_from_csv(
     'path/to/your/data/MSFT_M5.csv',
     datetime_col='datetime',
@@ -93,10 +94,10 @@ engine = Engine(
     parameters=params
 )
 
-results = engine.run_backtest(display_progress=True)
+results = engine.run_backtest( display_progress=True )
 
 # 5. Get and print the results
 trade_summary = results.get_result()
-print(trade_summary)
+print( trade_summary )
 
 ```
