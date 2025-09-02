@@ -1,9 +1,23 @@
 from src.visualizer.windows.plot_data import PlotWindow
 
 import pandas as pd
+import numpy as np
 import pyqtgraph as pg
+from pyqtgraph import QtCore
 from typing import Optional, Callable, Literal
-from PySide6.QtWidgets import QApplication
+import datetime as dt
+from PySide6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QComboBox,
+    QDateTimeEdit,
+    QPushButton,
+    QLabel,
+)
+from PySide6.QtCore import QDateTime as PQtDateTime, Qt as PQt
 
 
 class PlotTradesWindow(PlotWindow):
@@ -11,19 +25,34 @@ class PlotTradesWindow(PlotWindow):
         super().__init__()
         self.setWindowTitle("Trades")
         self.marker_size = marker_size
-        self._layers: list[pg.ScatterPlotItem] = []
+        self._layers: list[pg.GraphicsObject] = []
+        # Time filter state
+        self._filter_start: Optional[pd.Timestamp] = None
+        self._filter_end: Optional[pd.Timestamp] = None
+        self._filtered_trades: Optional[pd.DataFrame] = None
 
         # Colors/symbols
         self._colors = {"buy": (0, 200, 0), "sell": (220, 50, 50)}
         self._entry_symbols = {"buy": "t", "sell": "t1"}
         self._exit_symbol = "o"
+        # Outcome colors for future link/annotation usage
+        self._outcome_colors = {
+            "win": (0, 200, 0),
+            "loss": (220, 50, 50),
+            "flat": (160, 160, 160),
+        }
+
+        # Trades df must exist before choosing axis to avoid attribute errors in recompute hooks
+        self.trades: Optional[pd.DataFrame] = None
 
         # Mapping: datetime -> x
         self._time_mapper: Optional[Callable[[pd.Series], pd.Series]] = None
         # Default to datetime mode (POSIX timestamps)
         self.use_datetime_axis()
 
-        self.trades: Optional[pd.DataFrame] = None
+        # Initialize time filter UI
+        self._init_time_filter_ui()
+
         if trades is not None:
             self.set_trades(trades)
 
@@ -31,6 +60,10 @@ class PlotTradesWindow(PlotWindow):
     def use_datetime_axis(self) -> None:
         """Use POSIX timestamps as x (when your candlestick axis is datetime)."""
         self._time_mapper = lambda ts: pd.to_datetime(ts).view("int64") / 1e9
+        # Recompute mapped x fields if trades are already loaded
+        trades = getattr(self, "trades", None)
+        if trades is not None and not trades.empty:
+            self._precompute_trade_fields()
 
     def bind_to_bars(self, ohlc: pd.DataFrame, time_col: str = "time") -> None:
         """
@@ -91,6 +124,10 @@ class PlotTradesWindow(PlotWindow):
             return pd.Series(x_vals[nearest], index=ts.index)
 
         self._time_mapper = map_to_nearest_bar
+        # Recompute mapped x fields if trades are already loaded
+        trades = getattr(self, "trades", None)
+        if trades is not None and not trades.empty:
+            self._precompute_trade_fields()
 
     # Public API
     def set_trades(self, trades: pd.DataFrame) -> None:
@@ -98,6 +135,8 @@ class PlotTradesWindow(PlotWindow):
         self.trades = trades.copy()
         self.trades["start"] = pd.to_datetime(self.trades["start"])
         self.trades["end"] = pd.to_datetime(self.trades["end"])
+        self._precompute_trade_fields()
+        self._refresh_filter_controls_bounds()
         self._render()
 
     def add_trades(self, trades: pd.DataFrame) -> None:
@@ -109,6 +148,8 @@ class PlotTradesWindow(PlotWindow):
             self.trades = trades
         else:
             self.trades = pd.concat([self.trades, trades], axis=0, ignore_index=True)
+        self._precompute_trade_fields()
+        self._refresh_filter_controls_bounds()
         self._render()
 
     def clear_trades(self) -> None:
@@ -119,13 +160,331 @@ class PlotTradesWindow(PlotWindow):
                 pass
         self._layers.clear()
 
+    def _precompute_trade_fields(self) -> None:
+        """
+        Precompute per-trade fields used by rendering and future enhancements:
+        - _side: normalized 'buy'/'sell'
+        - _y_entry, _y_exit: entry and exit prices per side
+        - _x_start, _x_end: mapped x positions using current time mapper
+        - _is_win, _is_lose, _is_flat, _outcome: outcome classification based on profit/delta
+        """
+        if self.trades is None or self.trades.empty:
+            return
+
+        df = self.trades
+
+        # Normalize side and ensure numeric price columns
+        side = df["type"].astype(str).str.lower().str.strip()
+        df["_side"] = side
+
+        buyprice = pd.to_numeric(df["buyprice"], errors="coerce")
+        sellprice = pd.to_numeric(df["sellprice"], errors="coerce")
+
+        # Entry/exit price by side
+        df["_y_entry"] = buyprice.where(side == "buy", sellprice)
+        df["_y_exit"] = sellprice.where(side == "buy", buyprice)
+
+        # Mapped x (depends on current mapper)
+        df["_x_start"] = self._map_time(df["start"])
+        df["_x_end"] = self._map_time(df["end"])
+
+        # Outcome metric: prefer 'profit' (from trades.csv), then 'delta', else price diff
+        if "profit" in df.columns:
+            profit_series = pd.to_numeric(df["profit"], errors="coerce")
+        else:
+            profit_series = pd.Series(pd.NA, index=df.index, dtype="float64")
+
+        if "delta" in df.columns:
+            delta_series = pd.to_numeric(df["delta"], errors="coerce")
+        else:
+            delta_series = pd.Series(pd.NA, index=df.index, dtype="float64")
+
+        price_diff = (
+            sellprice - buyprice
+        )  # fallback if neither profit nor delta is available
+
+        outcome_metric = profit_series
+        if outcome_metric.isna().any():
+            outcome_metric = outcome_metric.fillna(delta_series)
+        if outcome_metric.isna().any():
+            outcome_metric = outcome_metric.fillna(price_diff)
+
+        df["_is_win"] = outcome_metric > 0
+        df["_is_lose"] = outcome_metric < 0
+        df["_is_flat"] = ~(df["_is_win"] | df["_is_lose"])
+        df["_outcome"] = pd.Series("flat", index=df.index)
+        df.loc[df["_is_win"], "_outcome"] = "win"
+        df.loc[df["_is_lose"], "_outcome"] = "loss"
+
+    # ---- Time filter UI and API ----
+
+    def _init_time_filter_ui(self) -> None:
+        """Create docked time filter controls with quick ranges."""
+        self._filter_dock = QDockWidget("Time Filter", self)
+        self._filter_dock.setObjectName("TimeFilterDock")
+        w = QWidget(self._filter_dock)
+        vbox = QVBoxLayout(w)
+
+        # Quick ranges
+        rng_row = QHBoxLayout()
+        rng_label = QLabel("Quick range:")
+        self._cmb_quick_range = QComboBox()
+        self._cmb_quick_range.addItems(
+            [
+                "All",
+                "Today",
+                "Last 1D",
+                "Last 7D",
+                "Last 30D",
+                "Month-to-date",
+                "Custom",
+            ]
+        )
+        rng_row.addWidget(rng_label)
+        rng_row.addWidget(self._cmb_quick_range)
+        vbox.addLayout(rng_row)
+
+        # Start/End editors
+        dt_row1 = QHBoxLayout()
+        lbl_start = QLabel("Start:")
+        self._dt_start = QDateTimeEdit()
+        self._dt_start.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self._dt_start.setCalendarPopup(True)
+        dt_row1.addWidget(lbl_start)
+        dt_row1.addWidget(self._dt_start)
+        vbox.addLayout(dt_row1)
+
+        dt_row2 = QHBoxLayout()
+        lbl_end = QLabel("End:")
+        self._dt_end = QDateTimeEdit()
+        self._dt_end.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
+        self._dt_end.setCalendarPopup(True)
+        dt_row2.addWidget(lbl_end)
+        dt_row2.addWidget(self._dt_end)
+        vbox.addLayout(dt_row2)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        self._btn_apply = QPushButton("Apply")
+        self._btn_reset = QPushButton("Reset")
+        btn_row.addWidget(self._btn_apply)
+        btn_row.addWidget(self._btn_reset)
+        vbox.addLayout(btn_row)
+
+        w.setLayout(vbox)
+        self._filter_dock.setWidget(w)
+        self.addDockWidget(PQt.RightDockWidgetArea, self._filter_dock)
+
+        # Connections
+        self._cmb_quick_range.currentTextChanged.connect(self._on_quick_range_changed)
+        self._btn_apply.clicked.connect(self._apply_filter_and_render)
+        self._btn_reset.clicked.connect(self.clear_time_filter)
+
+        # Initial state
+        self._set_filter_controls_enabled(False)
+
+    def _set_filter_controls_enabled(self, enabled: bool) -> None:
+        for widget in (
+            self._cmb_quick_range,
+            self._dt_start,
+            self._dt_end,
+            self._btn_apply,
+            self._btn_reset,
+        ):
+            widget.setEnabled(enabled)
+
+    def _refresh_filter_controls_bounds(self) -> None:
+        """Set min/max bounds of editors based on trades and initialize values if needed."""
+        if self.trades is None or self.trades.empty:
+            self._set_filter_controls_enabled(False)
+            return
+
+        self._set_filter_controls_enabled(True)
+
+        min_start = pd.to_datetime(self.trades["start"]).min()
+        max_end = pd.to_datetime(self.trades["end"]).max()
+
+        def to_qdt(ts: pd.Timestamp) -> PQtDateTime:
+            secs = int(pd.Timestamp(ts).timestamp())
+            return PQtDateTime.fromSecsSinceEpoch(secs)
+
+        qmin = to_qdt(min_start)
+        qmax = to_qdt(max_end)
+
+        self._dt_start.setMinimumDateTime(qmin)
+        self._dt_start.setMaximumDateTime(qmax)
+        self._dt_end.setMinimumDateTime(qmin)
+        self._dt_end.setMaximumDateTime(qmax)
+
+        # Initialize editors if unset
+        if self._filter_start is None:
+            self._dt_start.setDateTime(qmin)
+        else:
+            # clamp to bounds
+            fs = max(min_start, self._filter_start)
+            fs = min(max_end, fs)
+            self._dt_start.setDateTime(to_qdt(fs))
+
+        if self._filter_end is None:
+            self._dt_end.setDateTime(qmax)
+        else:
+            fe = max(min_start, self._filter_end)
+            fe = min(max_end, fe)
+            self._dt_end.setDateTime(to_qdt(fe))
+
+        # Default quick range to 'All' if no filter
+        if self._filter_start is None and self._filter_end is None:
+            self._cmb_quick_range.setCurrentText("All")
+
+    def _on_quick_range_changed(self, text: str) -> None:
+        if self.trades is None or self.trades.empty:
+            return
+        min_start = pd.to_datetime(self.trades["start"]).min()
+        max_end = pd.to_datetime(self.trades["end"]).max()
+
+        now = pd.Timestamp.now()
+        # Base end defaults to dataset max for last-X ranges
+        end = max_end
+        start = None
+
+        if text == "All":
+            self.clear_time_filter()
+            # Also set editors to bounds for clarity
+            self._refresh_filter_controls_bounds()
+            return
+        elif text == "Today":
+            # Today by calendar day in local time
+            start = now.normalize()
+            end = start + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+        elif text == "Last 1D":
+            start = end - pd.Timedelta(days=1)
+        elif text == "Last 7D":
+            start = end - pd.Timedelta(days=7)
+        elif text == "Last 30D":
+            start = end - pd.Timedelta(days=30)
+        elif text == "Month-to-date":
+            month_start = pd.Timestamp(year=end.year, month=end.month, day=1)
+            start = month_start
+        elif text == "Custom":
+            # Do not auto-apply; user will adjust and hit Apply
+            return
+        else:
+            return
+
+        # Clamp to dataset bounds
+        if start is not None:
+            start = max(min_start, start)
+        if end is not None:
+            end = min(max_end, end)
+
+        self.set_time_filter(start, end)
+
+    def _apply_filter_and_render(self) -> None:
+        # Read from editors and apply
+        if self.trades is None or self.trades.empty:
+            return
+        fs = pd.to_datetime(self._dt_start.dateTime().toSecsSinceEpoch(), unit="s")
+        fe = pd.to_datetime(self._dt_end.dateTime().toSecsSinceEpoch(), unit="s")
+        self.set_time_filter(fs, fe)
+
+    def set_time_filter(
+        self, start: Optional[pd.Timestamp], end: Optional[pd.Timestamp]
+    ) -> None:
+        """Set current time filter and re-render."""
+        # Normalize order
+        if start is not None and end is not None and start > end:
+            start, end = end, start
+
+        self._filter_start = None if start is None else pd.to_datetime(start)
+        self._filter_end = None if end is None else pd.to_datetime(end)
+
+        # Sync editors
+        def to_qdt(ts: pd.Timestamp) -> PQtDateTime:
+            secs = int(pd.Timestamp(ts).timestamp())
+            return PQtDateTime.fromSecsSinceEpoch(secs)
+
+        if self.trades is not None and not self.trades.empty:
+            self._refresh_filter_controls_bounds()
+            if self._filter_start is not None:
+                self._dt_start.setDateTime(to_qdt(self._filter_start))
+            if self._filter_end is not None:
+                self._dt_end.setDateTime(to_qdt(self._filter_end))
+
+        self._render()
+
+    def clear_time_filter(self) -> None:
+        """Clear the current time filter and re-render full data."""
+        self._filter_start = None
+        self._filter_end = None
+        if hasattr(self, "_cmb_quick_range"):
+            self._cmb_quick_range.setCurrentText("All")
+        if self.trades is not None and not self.trades.empty:
+            self._refresh_filter_controls_bounds()
+        self._render()
+
+    def get_time_filter(self) -> tuple[Optional[pd.Timestamp], Optional[pd.Timestamp]]:
+        """Return the current (start, end) filter."""
+        return self._filter_start, self._filter_end
+
+    def _apply_time_filter(self) -> pd.DataFrame:
+        """Return filtered trades according to current time filter (overlap semantics)."""
+        if self.trades is None or self.trades.empty:
+            return pd.DataFrame(columns=[])
+
+        df = self.trades
+        if self._filter_start is None and self._filter_end is None:
+            return df
+
+        start = (
+            self._filter_start
+            if self._filter_start is not None
+            else pd.to_datetime(df["start"]).min()
+        )
+        end = (
+            self._filter_end
+            if self._filter_end is not None
+            else pd.to_datetime(df["end"]).max()
+        )
+
+        mask = (df["start"] <= end) & (df["end"] >= start)
+        return df.loc[mask]
+
+    def _update_plot_view_range(self, df_filtered: pd.DataFrame) -> None:
+        """Adjust the x-range of the plot to match the current filter selection or filtered data span."""
+        if df_filtered is None or df_filtered.empty:
+            return
+
+        # Prefer explicit filter bounds when set
+        if self._filter_start is not None:
+            x0 = float(self._map_time(pd.Series([self._filter_start])).iloc[0])
+        else:
+            x0 = float(df_filtered["_x_start"].min())
+
+        if self._filter_end is not None:
+            x1 = float(self._map_time(pd.Series([self._filter_end])).iloc[0])
+        else:
+            x1 = float(df_filtered["_x_end"].max())
+
+        if x0 == x1:
+            # Avoid zero-width range
+            pad = 1.0
+            x0 -= pad
+            x1 += pad
+
+        try:
+            self.plot.setXRange(x0, x1, padding=0.02)
+        except Exception:
+            pass
+
     # Internal
     def _render(self) -> None:
         self.clear_trades()
         if self.trades is None or self.trades.empty:
             return
 
-        df = self.trades
+        df = self._apply_time_filter()
+        if df is None or df.empty:
+            return
 
         buy_mask = df["type"].str.lower() == "buy"
         sell_mask = df["type"].str.lower() == "sell"
@@ -175,6 +534,12 @@ class PlotTradesWindow(PlotWindow):
                 name="Sell Exit",
             )
 
+        # Dashed link lines: entry -> exit, colored by outcome (win/loss/flat)
+        self._add_trade_link_batches(df)
+
+        # Adjust view to current filter selection
+        self._update_plot_view_range(df)
+
     def _map_time(self, ts: pd.Series) -> pd.Series:
         return (
             self._time_mapper(ts)
@@ -196,6 +561,46 @@ class PlotTradesWindow(PlotWindow):
         )
         self.plot.addItem(item)
         self._layers.append(item)
+
+    def _add_trade_link_batches(self, df: pd.DataFrame) -> None:
+        """
+        Draw dashed link lines from entry to exit using batched segments per outcome.
+        Each outcome (win/loss/flat) is a single PlotDataItem with NaN-separated segments.
+        """
+        if df is None or df.empty:
+            return
+
+        outcome_names = {
+            "win": "Links (Win)",
+            "loss": "Links (Loss)",
+            "flat": "Links (Flat)",
+        }
+        for outcome in ("win", "loss", "flat"):
+            mask = df["_outcome"] == outcome
+            if not mask.any():
+                continue
+
+            x_start = df.loc[mask, "_x_start"].astype(float).to_numpy()
+            x_end = df.loc[mask, "_x_end"].astype(float).to_numpy()
+            y_entry = df.loc[mask, "_y_entry"].astype(float).to_numpy()
+            y_exit = df.loc[mask, "_y_exit"].astype(float).to_numpy()
+
+            n = len(x_start)
+            # Build NaN-separated segments: [x1, x2, nan, x3, x4, nan, ...]
+            x = np.empty(n * 3, dtype=float)
+            y = np.empty(n * 3, dtype=float)
+            x[0::3] = x_start
+            x[1::3] = x_end
+            x[2::3] = np.nan
+            y[0::3] = y_entry
+            y[1::3] = y_exit
+            y[2::3] = np.nan
+
+            color = self._outcome_colors.get(outcome, (160, 160, 160))
+            pen = pg.mkPen((*color, 200), width=1.8, style=QtCore.Qt.DashLine)
+            item = pg.PlotDataItem(x, y, pen=pen, name=outcome_names[outcome])
+            self.plot.addItem(item)
+            self._layers.append(item)
 
     def _validate_columns(self, df: pd.DataFrame) -> None:
         required = {"start", "end", "amount", "type", "buyprice", "sellprice"}
