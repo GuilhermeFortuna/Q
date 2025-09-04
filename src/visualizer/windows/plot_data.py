@@ -8,6 +8,29 @@ from src.visualizer.windows.base import BaseWindow
 
 
 class PlotWindow(BaseWindow):
+    """
+    A class representing a window for plotting market data.
+
+    This class is designed to display and manage various types of financial
+    charts, such as candlestick and line plots, using the plotting functionality
+    provided by pyqtgraph. The `PlotWindow` allows users to visualize market data
+    in a graphical format, facilitating analysis and interpretation.
+
+    :ivar PLOT_TYPE_MAP: A mapping of plot type names to their corresponding
+        plot item classes. Used for determining the appropriate plot type
+        dynamically.
+    :type PLOT_TYPE_MAP: dict
+    :ivar graphWidget: An instance of `pyqtgraph.GraphicsLayoutWidget` used as
+        the central widget for the plotting window.
+    :type graphWidget: pyqtgraph.GraphicsLayoutWidget
+    :ivar data: Stores the market data used for plotting. Typically provided
+        as a list or loaded from an external source.
+    :type data: list
+    :ivar plot: The plotting object within the `graphWidget` where different
+        types of charts and data visualizations are added.
+    :type plot: pyqtgraph.PlotItem
+    """
+
     PLOT_TYPE_MAP = {
         'candlestick': CandlestickItem,
         'line': LinePlotItem,

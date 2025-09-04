@@ -16,16 +16,49 @@ from PySide6.QtWidgets import (
     QDateTimeEdit,
     QPushButton,
     QLabel,
+    QCheckBox,
 )
 from PySide6.QtCore import QDateTime as PQtDateTime, Qt as PQt
 
 
 class PlotTradesWindow(PlotWindow):
+    """
+    Provides functionality to display and manage a plotting window for trades.
+
+    The PlotTradesWindow class is designed for visualizing trade data within a customized
+    plotting environment. The window supports displaying trades with specific attributes,
+    enabling control over timeline filters, mapping trade timestamps, and integrating with
+    candlestick charts' axes. Users can manage trade data dynamically by adding, clearing,
+    or modifying trades. It maintains compatibility with datetime and numeric axes for enhanced
+    usability and allows state-based control of trade rendering based on outcomes such as
+    profit, loss, or flat trades.
+
+    :ivar marker_size: Defines the size of markers used in the trade visualization.
+    :type marker_size: int
+    :ivar trades: Holds the trades DataFrame for visualizing transaction data.
+    :type trades: Optional[pandas.DataFrame]
+    """
+
     def __init__(self, trades: Optional[pd.DataFrame] = None, *, marker_size: int = 10):
         super().__init__()
         self.setWindowTitle("Trades")
         self.marker_size = marker_size
+
+        # Data
+        self._ohlc_data: Optional[pd.DataFrame] = None
+        self.trades: Optional[pd.DataFrame] = None
+
+        # Plot items
+        self._candlestick_item: Optional[pg.GraphicsObject] = None
         self._layers: list[pg.GraphicsObject] = []
+
+        # Rendering options
+        self._filter_candles = True
+        self._show_entries = True
+        self._show_exits = True
+        self._show_links = True
+        self._outcome_filter = "All"
+
         # Time filter state
         self._filter_start: Optional[pd.Timestamp] = None
         self._filter_end: Optional[pd.Timestamp] = None
@@ -42,9 +75,6 @@ class PlotTradesWindow(PlotWindow):
             "flat": (160, 160, 160),
         }
 
-        # Trades df must exist before choosing axis to avoid attribute errors in recompute hooks
-        self.trades: Optional[pd.DataFrame] = None
-
         # Mapping: datetime -> x
         self._time_mapper: Optional[Callable[[pd.Series], pd.Series]] = None
         # Default to datetime mode (POSIX timestamps)
@@ -55,6 +85,14 @@ class PlotTradesWindow(PlotWindow):
 
         if trades is not None:
             self.set_trades(trades)
+
+    def add_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
+        """
+        Store ohlc data for re-rendering. The candlestick item is managed by _render.
+        """
+        self._ohlc_data = ohlc.copy()
+        if "time" not in self._ohlc_data.columns:
+            self._ohlc_data["time"] = self._ohlc_data.index.copy()
 
     # Integration helpers
     def use_datetime_axis(self) -> None:
@@ -271,6 +309,47 @@ class PlotTradesWindow(PlotWindow):
         btn_row.addWidget(self._btn_reset)
         vbox.addLayout(btn_row)
 
+        vbox.addSpacing(10)
+        # Add a separator or label for view options
+        view_options_label = QLabel("View Options")
+        vbox.addWidget(view_options_label)
+
+        # Checkbox for filtering candles
+        self._chk_filter_candles = QCheckBox("Filter candlesticks")
+        self._chk_filter_candles.setChecked(self._filter_candles)
+        self._chk_filter_candles.stateChanged.connect(self._on_filter_candles_changed)
+        vbox.addWidget(self._chk_filter_candles)
+
+        # Trade visibility toggles
+        toggles_row = QHBoxLayout()
+        self._chk_show_entries = QCheckBox("Entries")
+        self._chk_show_entries.setChecked(self._show_entries)
+        self._chk_show_entries.stateChanged.connect(self._on_show_entries_changed)
+        toggles_row.addWidget(self._chk_show_entries)
+
+        self._chk_show_exits = QCheckBox("Exits")
+        self._chk_show_exits.setChecked(self._show_exits)
+        self._chk_show_exits.stateChanged.connect(self._on_show_exits_changed)
+        toggles_row.addWidget(self._chk_show_exits)
+
+        self._chk_show_links = QCheckBox("Links")
+        self._chk_show_links.setChecked(self._show_links)
+        self._chk_show_links.stateChanged.connect(self._on_show_links_changed)
+        toggles_row.addWidget(self._chk_show_links)
+        vbox.addLayout(toggles_row)
+
+        # Outcome filter
+        outcome_row = QHBoxLayout()
+        outcome_label = QLabel("Outcome:")
+        self._cmb_outcome_filter = QComboBox()
+        self._cmb_outcome_filter.addItems(["All", "Win", "Loss", "Flat"])
+        self._cmb_outcome_filter.currentTextChanged.connect(
+            self._on_outcome_filter_changed
+        )
+        outcome_row.addWidget(outcome_label)
+        outcome_row.addWidget(self._cmb_outcome_filter)
+        vbox.addLayout(outcome_row)
+
         w.setLayout(vbox)
         self._filter_dock.setWidget(w)
         self.addDockWidget(PQt.RightDockWidgetArea, self._filter_dock)
@@ -283,6 +362,26 @@ class PlotTradesWindow(PlotWindow):
         # Initial state
         self._set_filter_controls_enabled(False)
 
+    def _on_filter_candles_changed(self, state: int) -> None:
+        self._filter_candles = bool(state)
+        self._render()
+
+    def _on_show_entries_changed(self, state: int) -> None:
+        self._show_entries = bool(state)
+        self._render()
+
+    def _on_show_exits_changed(self, state: int) -> None:
+        self._show_exits = bool(state)
+        self._render()
+
+    def _on_show_links_changed(self, state: int) -> None:
+        self._show_links = bool(state)
+        self._render()
+
+    def _on_outcome_filter_changed(self, text: str) -> None:
+        self._outcome_filter = text
+        self._render()
+
     def _set_filter_controls_enabled(self, enabled: bool) -> None:
         for widget in (
             self._cmb_quick_range,
@@ -290,6 +389,11 @@ class PlotTradesWindow(PlotWindow):
             self._dt_end,
             self._btn_apply,
             self._btn_reset,
+            self._chk_filter_candles,
+            self._chk_show_entries,
+            self._chk_show_exits,
+            self._chk_show_links,
+            self._cmb_outcome_filter,
         ):
             widget.setEnabled(enabled)
 
@@ -432,22 +536,26 @@ class PlotTradesWindow(PlotWindow):
             return pd.DataFrame(columns=[])
 
         df = self.trades
-        if self._filter_start is None and self._filter_end is None:
-            return df
+        if self._filter_start is not None or self._filter_end is not None:
+            start = (
+                self._filter_start
+                if self._filter_start is not None
+                else pd.to_datetime(df["start"]).min()
+            )
+            end = (
+                self._filter_end
+                if self._filter_end is not None
+                else pd.to_datetime(df["end"]).max()
+            )
 
-        start = (
-            self._filter_start
-            if self._filter_start is not None
-            else pd.to_datetime(df["start"]).min()
-        )
-        end = (
-            self._filter_end
-            if self._filter_end is not None
-            else pd.to_datetime(df["end"]).max()
-        )
+            mask = (df["start"] <= end) & (df["end"] >= start)
+            df = df.loc[mask]
 
-        mask = (df["start"] <= end) & (df["end"] >= start)
-        return df.loc[mask]
+        # Apply outcome filter
+        if self._outcome_filter != "All":
+            df = df.loc[df["_outcome"] == self._outcome_filter.lower()]
+
+        return df
 
     def _update_plot_view_range(self, df_filtered: pd.DataFrame) -> None:
         """Adjust the x-range of the plot to match the current filter selection or filtered data span."""
@@ -479,63 +587,91 @@ class PlotTradesWindow(PlotWindow):
     # Internal
     def _render(self) -> None:
         self.clear_trades()
+        if self._candlestick_item:
+            self.plot.removeItem(self._candlestick_item)
+            self._candlestick_item = None
+
+        # Render candlesticks
+        ohlc_to_render = self._ohlc_data
+        if ohlc_to_render is not None and not ohlc_to_render.empty:
+            start, end = self.get_time_filter()
+            if self._filter_candles and start and end:
+                if isinstance(ohlc_to_render.index, pd.DatetimeIndex):
+                    # Slice data, ensuring we don't fail on missing dates
+                    ohlc_to_render = ohlc_to_render.loc[
+                        ohlc_to_render.index.to_series().between(start, end)
+                    ]
+
+            if not ohlc_to_render.empty:
+                CandlestickItem = self.PLOT_TYPE_MAP["candlestick"]
+                self._candlestick_item = CandlestickItem(ohlc_to_render)
+                self.plot.addItem(self._candlestick_item)
+
         if self.trades is None or self.trades.empty:
+            self._update_plot_view_range(
+                pd.DataFrame()
+            )  # Pass empty to maybe reset zoom
             return
 
         df = self._apply_time_filter()
         if df is None or df.empty:
+            self._update_plot_view_range(df)
             return
 
         buy_mask = df["type"].str.lower() == "buy"
         sell_mask = df["type"].str.lower() == "sell"
 
         # Entries
-        x_buy_entry = self._map_time(df.loc[buy_mask, "start"])
-        y_buy_entry = df.loc[buy_mask, "buyprice"].astype(float)
-        x_sell_entry = self._map_time(df.loc[sell_mask, "start"])
-        y_sell_entry = df.loc[sell_mask, "sellprice"].astype(float)
+        if self._show_entries:
+            x_buy_entry = self._map_time(df.loc[buy_mask, "start"])
+            y_buy_entry = df.loc[buy_mask, "buyprice"].astype(float)
+            x_sell_entry = self._map_time(df.loc[sell_mask, "start"])
+            y_sell_entry = df.loc[sell_mask, "sellprice"].astype(float)
+
+            if len(x_buy_entry) > 0:
+                self._add_scatter(
+                    x_buy_entry,
+                    y_buy_entry,
+                    color=self._colors["buy"],
+                    symbol=self._entry_symbols["buy"],
+                    name="Buy Entry",
+                )
+            if len(x_sell_entry) > 0:
+                self._add_scatter(
+                    x_sell_entry,
+                    y_sell_entry,
+                    color=self._colors["sell"],
+                    symbol=self._entry_symbols["sell"],
+                    name="Sell Entry",
+                )
 
         # Exits
-        x_buy_exit = self._map_time(df.loc[buy_mask, "end"])
-        y_buy_exit = df.loc[buy_mask, "sellprice"].astype(float)
-        x_sell_exit = self._map_time(df.loc[sell_mask, "end"])
-        y_sell_exit = df.loc[sell_mask, "buyprice"].astype(float)
+        if self._show_exits:
+            x_buy_exit = self._map_time(df.loc[buy_mask, "end"])
+            y_buy_exit = df.loc[buy_mask, "sellprice"].astype(float)
+            x_sell_exit = self._map_time(df.loc[sell_mask, "end"])
+            y_sell_exit = df.loc[sell_mask, "buyprice"].astype(float)
 
-        if len(x_buy_entry) > 0:
-            self._add_scatter(
-                x_buy_entry,
-                y_buy_entry,
-                color=self._colors["buy"],
-                symbol=self._entry_symbols["buy"],
-                name="Buy Entry",
-            )
-        if len(x_sell_entry) > 0:
-            self._add_scatter(
-                x_sell_entry,
-                y_sell_entry,
-                color=self._colors["sell"],
-                symbol=self._entry_symbols["sell"],
-                name="Sell Entry",
-            )
-        if len(x_buy_exit) > 0:
-            self._add_scatter(
-                x_buy_exit,
-                y_buy_exit,
-                color=self._colors["buy"],
-                symbol=self._exit_symbol,
-                name="Buy Exit",
-            )
-        if len(x_sell_exit) > 0:
-            self._add_scatter(
-                x_sell_exit,
-                y_sell_exit,
-                color=self._colors["sell"],
-                symbol=self._exit_symbol,
-                name="Sell Exit",
-            )
+            if len(x_buy_exit) > 0:
+                self._add_scatter(
+                    x_buy_exit,
+                    y_buy_exit,
+                    color=self._colors["buy"],
+                    symbol=self._exit_symbol,
+                    name="Buy Exit",
+                )
+            if len(x_sell_exit) > 0:
+                self._add_scatter(
+                    x_sell_exit,
+                    y_sell_exit,
+                    color=self._colors["sell"],
+                    symbol=self._exit_symbol,
+                    name="Sell Exit",
+                )
 
         # Dashed link lines: entry -> exit, colored by outcome (win/loss/flat)
-        self._add_trade_link_batches(df)
+        if self._show_links:
+            self._add_trade_link_batches(df)
 
         # Adjust view to current filter selection
         self._update_plot_view_range(df)
@@ -637,6 +773,7 @@ def create_candlestick_with_trades(
         A configured PlotTradesWindow with both candles and trade markers.
     """
     window = PlotTradesWindow(marker_size=marker_size)
+    # This now calls the overridden method in PlotTradesWindow
     window.add_candlestick_plot(ohlc_data)
 
     # Choose alignment mode
