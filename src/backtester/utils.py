@@ -10,22 +10,3 @@ TIMEFRAMES = {
     '15min': TimeframeInfo(mt5=mt5.TIMEFRAME_M15, delta=timedelta(minutes=15)),
     '1day': TimeframeInfo(mt5=mt5.TIMEFRAME_D1, delta=timedelta(days=1)),
 }
-
-MARKET_DATA_LAYOUT = {
-    "xaxis": {
-        "rangeslider": {"visible": False},
-        "type": "date",
-        "rangebreaks": [
-            dict(bounds=["sat", "mon"]),  # hide weekends
-        ],
-        "fixedrange": False,  # Allow panning and zooming
-    },
-    "yaxis": {
-        "autorange": True,
-        "type": "linear",
-        "fixedrange": False,  # Allow panning and zooming
-    },
-    "plot_bgcolor": "black",
-    "paper_bgcolor": "black",
-    "font": {"color": "white"},
-}

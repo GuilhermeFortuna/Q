@@ -2,6 +2,7 @@ import datetime as dt
 import time
 from abc import ABC, abstractmethod
 from typing import Optional, Union
+from src.backtester.utils import TIMEFRAMES
 
 import MetaTrader5 as mt5
 import numpy as np
@@ -109,14 +110,22 @@ class CandleData(MarketData):
     @staticmethod
     def import_from_mt5(
         mt5_symbol: str,
-        mt5_timeframe: int,
+        timeframe: str,
         date_from: dt.datetime,
         date_to: dt.datetime,
     ):
+        # Validate timeframe
+        if not isinstance(timeframe, str) or timeframe not in TIMEFRAMES.keys():
+            raise ValueError(f'Invalid timeframe: {timeframe}')
+
+        # Initialize connection to mt5 terminal with default credentials
         mt5.initialize()
+
         try:
             df = CandleData.format_candle_data_from_mt5(
-                data=mt5.copy_rates_range(mt5_symbol, mt5_timeframe, date_from, date_to)
+                data=mt5.copy_rates_range(
+                    mt5_symbol, TIMEFRAMES[timeframe].mt5, date_from, date_to
+                )
             )
         except:
             print(f'Error importing data for symbol {mt5_symbol} from MT5.')
