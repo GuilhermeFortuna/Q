@@ -1,8 +1,13 @@
 from src.visualizer.windows.plot_data import PlotWindow
 from src.visualizer.plots import CandlestickItem, LinePlotItem
+from src.visualizer.windows.backtest_summary import show_backtest_summary
+from src.visualizer.models import BacktestResultModel
 import pandas as pd
 
-__all__ = ['PlotWindow', 'create_candlestick_plot', 'create_line_plot', 'create_plot_window', 'show_candlestick', 'show_line_plot']
+__all__ = [
+    'PlotWindow', 'create_candlestick_plot', 'create_line_plot', 'create_plot_window', 
+    'show_candlestick', 'show_line_plot', 'show_backtest_summary', 'BacktestResultModel'
+]
 
 def _ensure_qapplication():
     """
