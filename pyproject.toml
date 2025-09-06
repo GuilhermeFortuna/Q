@@ -15,6 +15,7 @@ dependencies = [
     "numpy>=1.26.4",
     "backtester",
     "visualizer",
+    "optuna>=3.6.1",
 ]
 
 [tool.black]
@@ -25,8 +26,10 @@ skip-string-normalization = true
 members = [
     "backtester",
     "visualizer",
+    "optimizer",
 ]
 
 [tool.uv.sources]
 backtester = { workspace = true }
 visualizer = { workspace = true }
+optimizer = { workspace = true }

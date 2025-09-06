@@ -1,0 +1,12 @@
+[project]
+name = "optimizer"
+version = "0.1.0"
+description = "A package for strategy optimization using Optuna."
+requires-python = "==3.10"
+dependencies = [
+    "backtester",
+]
+
+[tool.black]
+line-length = 88
+skip-string-normalization = true
