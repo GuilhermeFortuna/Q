@@ -13,7 +13,7 @@ and detailed performance analysis.
 from .data import MarketData, CandleData, TickData
 
 # Strategy framework
-from .strategy import TradingStrategy, MaCrossover
+from .strategy import TradingStrategy
 
 # Backtesting engine
 from .engine import Engine, BacktestParameters
@@ -36,9 +36,8 @@ __all__ = [
     "MarketData",
     "CandleData",
     "TickData",
-    # Strategy classes
+    # Strategy interface
     "TradingStrategy",
-    "MaCrossover",
     # Engine classes
     "Engine",
     "BacktestParameters",
@@ -53,60 +52,6 @@ __all__ = [
 ]
 
 
-# Convenience imports for common use cases
-def create_simple_backtest(
-    symbol, timeframe, data_path, strategy_config, backtest_params
-):
-    """
-    Convenience function to create a simple backtest setup.
-
-    Args:
-        symbol (str): Trading symbol
-        timeframe (str): Data timeframe
-        data_path (str): Path to CSV data file
-        strategy_config (dict): Strategy configuration parameters
-        backtest_params (dict): Backtest parameter configuration
-
-    Returns:
-        Engine: Configured backtesting engine ready to run
-
-    Example:
-        >>> engine = create_simple_backtest(
-        ...     symbol='MSFT',
-        ...     timeframe='60min',
-        ...     data_path='data.csv',
-        ...     strategy_config={'short_period': 9, 'long_period': 21},
-        ...     backtest_params={'point_value': 450.0, 'cost_per_trade': 2.5}
-        ... )
-        >>> results = engine.run_backtest(display_progress=True)
-    """
-    # Load data
-    candles = CandleData(symbol=symbol, timeframe=timeframe)
-    candles.data = CandleData.import_from_csv(data_path)
-
-    # Create strategy with default MaCrossover if not specified
-    if 'strategy_type' not in strategy_config:
-        strategy = MaCrossover(
-            tick_value=strategy_config.get('tick_value', 0.01),
-            short_ma_func=strategy_config.get('short_ma_func', 'ema'),
-            short_ma_period=strategy_config.get('short_period', 9),
-            long_ma_func=strategy_config.get('long_ma_func', 'sma'),
-            long_ma_period=strategy_config.get('long_period', 21),
-            delta_tick_factor=strategy_config.get('delta_factor', 1.0),
-            always_active=strategy_config.get('always_active', True),
-        )
-    else:
-        raise NotImplementedError(
-            "Custom strategy types not yet supported in convenience function"
-        )
-
-    # Create parameters
-    params = BacktestParameters(**backtest_params)
-
-    # Create and return engine
-    return Engine(parameters=params, strategy=strategy, data={'candle': candles})
-
-
 # Package initialization
 def get_package_info():
     """Return package information as a dictionary."""
@@ -116,7 +61,7 @@ def get_package_info():
         'description': __description__,
         'components': {
             'data_classes': ['MarketData', 'CandleData', 'TickData'],
-            'strategy_classes': ['TradingStrategy', 'MaCrossover'],
+            'strategy_classes': ['TradingStrategy'],
             'engine_classes': ['Engine', 'BacktestParameters'],
             'trade_classes': ['TradeOrder', 'TradeRegistry'],
             'utilities': ['TIMEFRAMES', 'MARKET_DATA_LAYOUT', 'TimeframeInfo'],
@@ -147,7 +92,7 @@ def _validate_package():
         # Validate key relationships
         assert issubclass(CandleData, MarketData)
         assert issubclass(TickData, MarketData)
-        assert issubclass(MaCrossover, TradingStrategy)
+        assert issubclass(TradingStrategy)
 
         return True
     except (AssertionError, ImportError) as e:

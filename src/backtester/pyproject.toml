@@ -10,7 +10,6 @@ dependencies = [
     "metatrader5>=5.0.5200",
     "numpy>=1.26.4",
     "tqdm>=4.67.1",
-    "pandas-ta==0.3.14b0",
 ]
 
 [tool.setuptools]

@@ -18,7 +18,6 @@ uv add backtester
 - `metatrader5>=5.0.5200` - MT5 connectivity
 - `numpy>=1.26.4` - Numerical computations
 - `tqdm>=4.67.1` - Progress bars
-- `pandas-ta==0.3.14b0` - Technical analysis indicators
 
 ## Core Components
 
@@ -39,21 +38,18 @@ This module handles market data ingestion and processing:
 
 ### 2. Strategy (`strategy.py`)
 
-Defines the trading strategy interface and implementations:
+Defines the trading strategy interface:
 
 - **`TradingStrategy`**: Abstract base class requiring implementation of:
   - `compute_indicators(data)` - Calculate technical indicators
   - `entry_strategy(i, data)` - Define entry conditions
   - `exit_strategy(i, data, trade_info)` - Define exit conditions
-- **`MaCrossover`**: Built-in moving average crossover strategy
-  - Supports multiple MA types: SMA, EMA, DEMA, JMA, T3, TRIMA, FWMA
-  - Configurable periods and delta thresholds
-  - Optional "always active" mode for continuous position switching
+
+Implementations of this interface (like moving average crossover or RSI-based strategies) should be housed in a separate `strategies` package.
 
 ### 3. Engine (`engine.py`)
 
 The backtesting execution engine:
-
 - **`BacktestParameters`**: Configuration dataclass with:
   - `point_value` - Value per point movement
   - `cost_per_trade` - Transaction costs
@@ -140,7 +136,7 @@ Expected columns: `datetime`, `open`, `high`, `low`, `close`, `volume`
 
 ```python
 from src.backtester.data import CandleData
-from src.backtester.strategy import MaCrossover
+from src.strategies.swingtrade.ma_crossover import MaCrossover
 from src.backtester.engine import Engine, BacktestParameters
 
 # Load data
