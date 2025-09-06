@@ -2,7 +2,7 @@
 name = "q"
 version = "0.1.0"
 description = "Add your description here"
-requires-python = "==3.10"
+requires-python = "==3.10.*"
 dependencies = [
     "black>=25.1.0",
     "metatrader5>=5.0.5200",
@@ -24,9 +24,9 @@ skip-string-normalization = true
 
 [tool.uv.workspace]
 members = [
-    "backtester",
-    "visualizer",
-    "optimizer",
+    "src/backtester",
+    "src/visualizer",
+    "src/optimizer",
 ]
 
 [tool.uv.sources]
