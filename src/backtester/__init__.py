@@ -92,7 +92,6 @@ def _validate_package():
         # Validate key relationships
         assert issubclass(CandleData, MarketData)
         assert issubclass(TickData, MarketData)
-        assert issubclass(TradingStrategy)
 
         return True
     except (AssertionError, ImportError) as e:
