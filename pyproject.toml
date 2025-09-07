@@ -16,6 +16,8 @@ dependencies = [
     "backtester",
     "visualizer",
     "optuna>=3.6.1",
+    "optuna-dashboard>=0.14.0",
+    "psycopg2-binary>=2.9.9",
 ]
 
 [tool.black]

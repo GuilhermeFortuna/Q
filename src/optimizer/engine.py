@@ -1,6 +1,6 @@
 import optuna
-from typing import Type, Dict, Any
-
+from typing import Type, Dict, Any, Union
+from optuna.storages import BaseStorage
 from src.backtester.data import CandleData
 from src.backtester.engine import Engine, BacktestParameters
 from src.backtester.strategy import TradingStrategy
@@ -17,6 +17,8 @@ class Optimizer:
         config: Dict[str, Any],
         backtest_settings: Dict[str, Any],
         candle_data: CandleData,
+        study_name: str,
+        storage: Union[str, BaseStorage],
     ):
         """
         Initializes the Optimizer.
@@ -30,11 +32,15 @@ class Optimizer:
                     - 'direction': The optimization direction ('maximize' or 'minimize').
             backtest_settings: A dictionary with settings for the backtester engine.
             candle_data: The candle data to be used for the backtests.
+            study_name: The name of the study for persistence.
+            storage: The storage backend, either a URL string or a storage object.
         """
         self.strategy_class = strategy_class
         self.config = config
         self.backtest_settings = backtest_settings
         self.candle_data = candle_data
+        self.study_name = study_name
+        self.storage = storage
         self.param_space = self.config['parameters']
         self.n_trials = self.config.get('n_trials', 100)
         self.metric = self.config.get('metric', 'net_profit')
@@ -94,15 +100,16 @@ class Optimizer:
         """
         Runs the optimization study and returns the study object.
         """
-        study = optuna.create_study(direction=self.direction)
+        study = optuna.create_study(
+            study_name=self.study_name,
+            storage=self.storage,
+            load_if_exists=True,
+            direction=self.direction,
+        )
         study.optimize(self._objective, n_trials=self.n_trials, show_progress_bar=True)
 
         print("\nOptimization Finished.")
+        print(f"Study: {self.study_name}")
         print("Best trial:")
         trial = study.best_trial
         print(f"  Value ({self.metric}): {trial.value}")
-        print("  Params: ")
-        for key, value in trial.params.items():
-            print(f"    {key}: {value}")
-
-        return study
