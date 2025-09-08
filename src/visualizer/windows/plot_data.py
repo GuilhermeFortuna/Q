@@ -7,6 +7,35 @@ import pandas as pd
 from src.visualizer.windows.base import BaseWindow
 
 
+class DateAxis(pg.AxisItem):
+    """
+    A custom axis item that displays dates from a series of timestamps.
+    This axis will display formatted date strings instead of numerical indices,
+    effectively removing gaps from weekends and non-trading hours.
+    """
+
+    def __init__(self, timestamps, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._timestamps = timestamps
+
+    def tickStrings(self, values, scale, spacing):
+        """
+        Convert numerical tick values (indices) to date strings.
+        """
+        strings = []
+        for v in values:
+            index = int(round(v))
+            if 0 <= index < len(self._timestamps):
+                # Format the timestamp to a readable date string
+                strings.append(
+                    pd.to_datetime(self._timestamps[index]).strftime('%Y-%m-%d %H:%M')
+                )
+            else:
+                # Return an empty string for indices outside the data range
+                strings.append('')
+        return strings
+
+
 class PlotWindow(BaseWindow):
     """
     A class representing a window for plotting market data.
@@ -15,6 +44,9 @@ class PlotWindow(BaseWindow):
     charts, such as candlestick and line plots, using the plotting functionality
     provided by pyqtgraph. The `PlotWindow` allows users to visualize market data
     in a graphical format, facilitating analysis and interpretation.
+
+    The window is configured with a date-time axis and automatically handles
+    conversion of time-based data for plotting.
 
     :ivar PLOT_TYPE_MAP: A mapping of plot type names to their corresponding
         plot item classes. Used for determining the appropriate plot type
@@ -36,38 +68,64 @@ class PlotWindow(BaseWindow):
         'line': LinePlotItem,
     }
 
-    def __init__(self, data: list = None):
+    def __init__(self, title: str = "Market Data"):
         super(PlotWindow, self).__init__()
         self.graphWidget = pg.GraphicsLayoutWidget()
         self.setCentralWidget(self.graphWidget)
-        self.setWindowTitle("Market Data")
+        self.setWindowTitle(title)
 
-        self.data = data
-        # self.df = pd.DataFrame(self.data)
+        # This will store the original datetime values for axis labeling
+        self._time_values = None
 
         # Create a plot item
         self.plot = self.graphWidget.addPlot(row=0, col=0)
-
-    def _load_data_from_file(self, file_path):  # TODO: Maybe remove this private method
-        """Loads and prepares data from a CSV file."""
-        try:
-            self.data = pd.read_csv(file_path)
-            if isinstance(self.data, pd.DataFrame) and not self.data.empty:
-                return True
-            else:
-                return False
-        except Exception as e:
-            print(f"Error loading data: {e}")
-            return False
+        self.plot.addLegend()
+        self.plot.showGrid(x=True, y=True, alpha=0.3)
 
     def add_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
-        if 'time' not in ohlc.columns:
-            ohlc['time'] = ohlc.index.copy()
-        candlestick = CandlestickItem(ohlc)
+        """
+        Adds a candlestick plot to the window.
+        This method sets up a custom x-axis to display datetimes without gaps.
+        :param ohlc: DataFrame with open, high, low, close columns and a datetime index.
+        """
+        df = ohlc.copy()
+        if 'time' not in df.columns:
+            time_data = df.index.to_series()
+        else:
+            time_data = df['time']
+
+        # Store the original timestamps and set up the custom axis
+        self._time_values = pd.to_datetime(time_data).reset_index(drop=True)
+        date_axis = DateAxis(timestamps=self._time_values.values, orientation='bottom')
+        self.plot.setAxisItems({'bottom': date_axis})
+
+        # Use integer indices for the x-axis to remove gaps
+        df['time'] = self._time_values.index.to_list()
+
+        candlestick = CandlestickItem(df)
         self.plot.addItem(candlestick)
 
     def add_line_plot(self, x, y, name, color, width) -> None:
-        line = LinePlotItem(x, y, name=name, color=color, width=width)
+        """
+        Adds a line plot. Aligns datetime x-axis data to the candlestick's axis.
+        :param x: A list or array of x-axis data (can be datetime objects).
+        :param y: A list or array of y-axis data.
+        :param name: Name of the line for the legend.
+        :param color: Color of the line.
+        :param width: Width of the line.
+        """
+        x_series = pd.Series(x)
+        if pd.api.types.is_datetime64_any_dtype(x_series.dtype):
+            if self._time_values is None:
+                raise ValueError(
+                    "A candlestick plot must be added first to establish a time axis."
+                )
+            # Map datetime values to integer indices using the stored time values
+            x_numeric = self._time_values.searchsorted(pd.to_datetime(x_series))
+        else:
+            x_numeric = x_series
+
+        line = LinePlotItem(x_numeric.tolist(), y, name=name, color=color, width=width)
         self.plot.addItem(line)
 
     def add_histogram_plot(self, data) -> None:
@@ -90,11 +148,20 @@ if __name__ == '__main__':
     candle_data = candle_data.loc[
         (candle_data.index >= DATE_FROM) & (candle_data.index <= DATE_TO)
     ].copy()
-    candle_data.insert(0, 'time', list(range(len(candle_data))))
 
     q_app = QApplication(sys.argv)
-    plot_window = PlotWindow()
+    plot_window = PlotWindow(title="CCM Market Data Analysis")
+
+    # Add candlestick plot first to define the time axis
     plot_window.add_candlestick_plot(candle_data)
-    # plot_window.create_line_plot(x=x, y=y, name='Close', color='yellow', width=2)
+
+    # Example of adding a line plot for the 'close' price
+    plot_window.add_line_plot(
+        x=candle_data.index,
+        y=candle_data['close'],
+        name='Close Price',
+        color='yellow',
+        width=2,
+    )
     plot_window.show()
     sys.exit(q_app.exec())
