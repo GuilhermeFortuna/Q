@@ -68,7 +68,7 @@ class PlotWindow(BaseWindow):
         'line': LinePlotItem,
     }
 
-    def __init__(self, title: str = "Market Data"):
+    def __init__(self, title: str = "Market Data", initial_candles: int = 100):
         super(PlotWindow, self).__init__()
         self.graphWidget = pg.GraphicsLayoutWidget()
         self.setCentralWidget(self.graphWidget)
@@ -76,11 +76,48 @@ class PlotWindow(BaseWindow):
 
         # This will store the original datetime values for axis labeling
         self._time_values = None
+        # Store ohlc data for dynamic y-range adjustments
+        self._ohlc_data = None
+        self._initial_candles = initial_candles
 
         # Create a plot item
         self.plot = self.graphWidget.addPlot(row=0, col=0)
         self.plot.addLegend()
         self.plot.showGrid(x=True, y=True, alpha=0.3)
+
+        # Disable auto-ranging and connect range change handler for dynamic Y zoom
+        vb = self.plot.getViewBox()
+        vb.disableAutoRange()
+        self.plot.sigXRangeChanged.connect(self._on_x_range_changed)
+
+    def _on_x_range_changed(self):
+        """
+        Dynamically adjusts the Y-axis range to fit the visible candles.
+        This provides an auto-zoom effect on the Y-axis as the user pans or zooms.
+        """
+        if self._ohlc_data is None or self._ohlc_data.empty:
+            return
+
+        # Get the visible range of indices from the plot's view box
+        view_box = self.plot.getViewBox()
+        x_range = view_box.viewRange()[0]
+        start_index = max(0, int(x_range[0]))
+        end_index = min(len(self._ohlc_data), int(x_range[1]) + 1)
+
+        if start_index >= end_index:
+            return
+
+        # Slice the data to the visible range and find min/max prices
+        visible_data = self._ohlc_data.iloc[start_index:end_index]
+        if visible_data.empty:
+            return
+
+        min_low = visible_data['low'].min()
+        max_high = visible_data['high'].max()
+
+        # Add some padding to the y-range for better visibility
+        y_padding = (max_high - min_low) * 0.1
+        view_box.setYRange(min_low - y_padding, max_high + y_padding, padding=0)
 
     def add_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
         """
@@ -89,6 +126,8 @@ class PlotWindow(BaseWindow):
         :param ohlc: DataFrame with open, high, low, close columns and a datetime index.
         """
         df = ohlc.copy()
+        self._ohlc_data = df.reset_index(drop=True)  # Store for y-range adjustments
+
         if 'time' not in df.columns:
             time_data = df.index.to_series()
         else:
@@ -104,6 +143,11 @@ class PlotWindow(BaseWindow):
 
         candlestick = CandlestickItem(df)
         self.plot.addItem(candlestick)
+
+        # Set the initial visible range to the last N candles
+        num_candles = len(df)
+        initial_view_start = max(0, num_candles - self._initial_candles)
+        self.plot.setXRange(initial_view_start, num_candles)
 
     def add_line_plot(self, x, y, name, color, width) -> None:
         """
@@ -150,7 +194,7 @@ if __name__ == '__main__':
     ].copy()
 
     q_app = QApplication(sys.argv)
-    plot_window = PlotWindow(title="CCM Market Data Analysis")
+    plot_window = PlotWindow(title="CCM Market Data Analysis", initial_candles=150)
 
     # Add candlestick plot first to define the time axis
     plot_window.add_candlestick_plot(candle_data)
