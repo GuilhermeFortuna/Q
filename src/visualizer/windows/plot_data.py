@@ -247,33 +247,36 @@ class PlotWindow(BaseWindow):
 
 if __name__ == '__main__':
     import sys
-    from datetime import datetime
+    from datetime import datetime, timedelta
     from src.backtester import CandleData
+    import pandas_ta as pta
     import numpy as np
 
     # Data parameters
-    DATA_PATH = r'F:\New_Backup_03_2025\PyQuant\data\ccm_60min_atualizado.csv'
-    TIMEFRAME = '60min'
-    DATE_FROM = datetime(2020, 1, 1)
-    DATE_TO = datetime.today()
+    symbol = 'DOL$'
+    timeframe = '5min'
+    date_to = datetime.today()
+    date_from = date_to - timedelta(days=15)
 
-    candles = CandleData(symbol='CCM', timeframe=TIMEFRAME)
-    candle_data = candles.import_from_csv(DATA_PATH)
-    candle_data = candle_data.loc[
-        (candle_data.index >= DATE_FROM) & (candle_data.index <= DATE_TO)
-    ].copy()
+    candles = CandleData(symbol='DOL', timeframe=timeframe)
+    candle_data = CandleData.import_from_mt5(
+        mt5_symbol=symbol, timeframe=timeframe, date_from=date_from, date_to=date_to
+    )
+    candle_data['volume'] = candle_data['real_volume'].copy()
 
     # --- Example indicator data ---
     # Simple Moving Average
-    candle_data['sma_20'] = candle_data['close'].rolling(20).mean()
-    # Volume data (assuming it exists in the CSV)
-    if 'volume' not in candle_data.columns:
-        candle_data['volume'] = np.random.randint(100, 10000, size=len(candle_data))
+    candle_data['ma'] = pta.ema(candle_data['close'], length=9)
     # Example scatter data (e.g., local maxima)
-    local_maxima = candle_data.loc[
-        (candle_data['high'].shift(1) < candle_data['high'])
-        & (candle_data['high'].shift(-1) < candle_data['high'])
-    ]
+    hilo_period = 9
+    hilo = pta.hilo(
+        candle_data['high'],
+        candle_data['low'],
+        candle_data['close'],
+        hilo_period,
+        hilo_period,
+    ).iloc[:, 0]
+    candle_data['hilo'] = hilo.copy()
 
     q_app = QApplication(sys.argv)
     plot_window = PlotWindow(title="CCM Market Data Analysis", initial_candles=150)
@@ -284,22 +287,21 @@ if __name__ == '__main__':
     # Example of adding a line plot for a moving average
     plot_window.add_line_plot(
         x=candle_data.index,
-        y=candle_data['sma_20'],
-        name='SMA(20)',
+        y=candle_data['ma'],
+        name='MA',
         color='cyan',
         width=2,
     )
 
     # Example of adding a scatter plot for local maxima
-    if not local_maxima.empty:
-        plot_window.add_scatter_plot(
-            x=local_maxima.index,
-            y=local_maxima['high'] * 1.01,  # Plot slightly above the high
-            name='Local Maxima',
-            color='magenta',
-            size=10,
-            symbol='d',  # Diamond symbol
-        )
+    plot_window.add_scatter_plot(
+        x=candle_data['hilo'].index,
+        y=candle_data['hilo'],
+        name='HiLo',
+        color='magenta',
+        size=10,
+        symbol='d',  # Diamond symbol
+    )
 
     # Example of adding a volume histogram in a subplot
     plot_window.add_histogram_plot(
