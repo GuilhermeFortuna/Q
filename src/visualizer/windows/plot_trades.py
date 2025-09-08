@@ -44,6 +44,9 @@ class PlotTradesWindow(PlotWindow):
         self.setWindowTitle("Trades")
         self.marker_size = marker_size
 
+        # Add a reference to the main plot for backward compatibility
+        self.plot = self.price_plot
+
         # Data
         self._ohlc_data: Optional[pd.DataFrame] = None
         self.trades: Optional[pd.DataFrame] = None
