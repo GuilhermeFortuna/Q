@@ -17,8 +17,12 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
     QCheckBox,
+    QGraphicsPathItem,
 )
 from PySide6.QtCore import QDateTime as PQtDateTime, Qt as PQt
+from PySide6.QtGui import QPainterPath, QPen, QColor
+
+DEFAULT_TRADE_MARKER_SIZE = 20
 
 
 class PlotTradesWindow(PlotWindow):
@@ -39,7 +43,12 @@ class PlotTradesWindow(PlotWindow):
     :type trades: Optional[pandas.DataFrame]
     """
 
-    def __init__(self, trades: Optional[pd.DataFrame] = None, *, marker_size: int = 10):
+    def __init__(
+        self,
+        trades: Optional[pd.DataFrame] = None,
+        *,
+        marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
+    ):
         super().__init__()
         self.setWindowTitle("Trades")
         self.marker_size = marker_size
@@ -68,7 +77,10 @@ class PlotTradesWindow(PlotWindow):
         self._filtered_trades: Optional[pd.DataFrame] = None
 
         # Colors/symbols
-        self._colors = {"buy": (0, 200, 0), "sell": (220, 50, 50)}
+        self._colors = {
+            "buy": (40, 220, 130),
+            "sell": (255, 90, 90),
+        }  # Distinct Red/Green Tones
         self._entry_symbols = {"buy": "t", "sell": "t1"}
         self._exit_symbol = "o"
         # Outcome colors for future link/annotation usage
@@ -624,52 +636,54 @@ class PlotTradesWindow(PlotWindow):
         buy_mask = df["type"].str.lower() == "buy"
         sell_mask = df["type"].str.lower() == "sell"
 
-        # Entries
+        # Entries (batched: single item, per-spot symbols/colors)
         if self._show_entries:
-            x_buy_entry = self._map_time(df.loc[buy_mask, "start"])
-            y_buy_entry = df.loc[buy_mask, "buyprice"].astype(float)
-            x_sell_entry = self._map_time(df.loc[sell_mask, "start"])
-            y_sell_entry = df.loc[sell_mask, "sellprice"].astype(float)
-
-            if len(x_buy_entry) > 0:
-                self._add_scatter(
-                    x_buy_entry,
-                    y_buy_entry,
-                    color=self._colors["buy"],
-                    symbol=self._entry_symbols["buy"],
-                    name="Buy Entry",
+            x_ent = df["_x_start"].astype(float).to_numpy()
+            y_ent = df["_y_entry"].astype(float).to_numpy()
+            side_ent = df["_side"].astype(str).to_numpy()
+            if x_ent.size > 0:
+                # Symbols: triangle up for buy ('t'), triangle down for sell ('t1')
+                symbols_ent = np.where(side_ent == "buy", "t", "t1")
+                # Colors by side
+                condition = (side_ent == "buy")[:, np.newaxis]
+                colors_ent = np.where(
+                    condition, self._colors["buy"], self._colors["sell"]
                 )
-            if len(x_sell_entry) > 0:
-                self._add_scatter(
-                    x_sell_entry,
-                    y_sell_entry,
-                    color=self._colors["sell"],
-                    symbol=self._entry_symbols["sell"],
-                    name="Sell Entry",
+                # Use a white pen for a visible outline
+                outline_pen = pg.mkPen((240, 240, 240), width=1)
+                pens_ent = [outline_pen] * len(x_ent)
+                brushes_ent = [pg.mkBrush(*c, 200) for c in colors_ent]
+                self._add_scatter_batch(
+                    x_ent,
+                    y_ent,
+                    symbols=symbols_ent,
+                    brushes=brushes_ent,
+                    pens=pens_ent,
+                    name="Entries",
                 )
 
-        # Exits
+        # Exits (batched: single item, ring markers via transparent brush)
         if self._show_exits:
-            x_buy_exit = self._map_time(df.loc[buy_mask, "end"])
-            y_buy_exit = df.loc[buy_mask, "sellprice"].astype(float)
-            x_sell_exit = self._map_time(df.loc[sell_mask, "end"])
-            y_sell_exit = df.loc[sell_mask, "buyprice"].astype(float)
-
-            if len(x_buy_exit) > 0:
-                self._add_scatter(
-                    x_buy_exit,
-                    y_buy_exit,
-                    color=self._colors["buy"],
-                    symbol=self._exit_symbol,
-                    name="Buy Exit",
+            x_ex = df["_x_end"].astype(float).to_numpy()
+            y_ex = df["_y_exit"].astype(float).to_numpy()
+            side_ex = df["_side"].astype(str).to_numpy()
+            if x_ex.size > 0:
+                symbols_ex = np.array(["o"] * len(x_ex))
+                # Colors by side
+                condition = (side_ex == "buy")[:, np.newaxis]
+                colors_ex = np.where(
+                    condition, self._colors["buy"], self._colors["sell"]
                 )
-            if len(x_sell_exit) > 0:
-                self._add_scatter(
-                    x_sell_exit,
-                    y_sell_exit,
-                    color=self._colors["sell"],
-                    symbol=self._exit_symbol,
-                    name="Sell Exit",
+                pens_ex = [pg.mkPen(tuple(c), width=1.8) for c in colors_ex]
+                transparent = pg.mkBrush(0, 0, 0, 0)
+                brushes_ex = [transparent] * len(x_ex)
+                self._add_scatter_batch(
+                    x_ex,
+                    y_ex,
+                    symbols=symbols_ex,
+                    brushes=brushes_ex,
+                    pens=pens_ex,
+                    name="Exits",
                 )
 
         # Dashed link lines: entry -> exit, colored by outcome (win/loss/flat)
@@ -701,19 +715,59 @@ class PlotTradesWindow(PlotWindow):
         self.plot.addItem(item)
         self._layers.append(item)
 
+    def _add_scatter_batch(
+        self,
+        x,
+        y,
+        *,
+        symbols=None,
+        brushes=None,
+        pens=None,
+        name: str = "",
+        size: Optional[int] = None,
+    ) -> None:
+        """
+        Add a single ScatterPlotItem with per-spot customization.
+        - x, y: sequences
+        - symbols: sequence of per-spot symbols (or single symbol)
+        - brushes: sequence of pg.Brush or color tuples per spot
+        - pens: sequence of pg.Pen or color tuples per spot
+        - name: legend name
+        - size: marker size (if None uses self.marker_size)
+        """
+        if x is None:
+            return
+        x_list = list(x)
+        if len(x_list) == 0:
+            return
+        y_list = list(y)
+        if size is None:
+            size = self.marker_size
+        item = pg.ScatterPlotItem()
+        kwargs = {
+            "x": x_list,
+            "y": y_list,
+            "size": size,
+            "name": name,
+        }
+        if symbols is not None:
+            kwargs["symbol"] = list(symbols)
+        if brushes is not None:
+            kwargs["brush"] = list(brushes)
+        if pens is not None:
+            kwargs["pen"] = list(pens)
+        item.setData(**kwargs)
+        self.plot.addItem(item)
+        self._layers.append(item)
+
     def _add_trade_link_batches(self, df: pd.DataFrame) -> None:
         """
-        Draw dashed link lines from entry to exit using batched segments per outcome.
-        Each outcome (win/loss/flat) is a single PlotDataItem with NaN-separated segments.
+        Draw dashed link lines from entry to exit using a single QGraphicsPathItem per outcome.
+        This reduces item count and allows cosmetic dashed pens for clarity at all zoom levels.
         """
         if df is None or df.empty:
             return
 
-        outcome_names = {
-            "win": "Links (Win)",
-            "loss": "Links (Loss)",
-            "flat": "Links (Flat)",
-        }
         for outcome in ("win", "loss", "flat"):
             mask = df["_outcome"] == outcome
             if not mask.any():
@@ -724,20 +778,25 @@ class PlotTradesWindow(PlotWindow):
             y_entry = df.loc[mask, "_y_entry"].astype(float).to_numpy()
             y_exit = df.loc[mask, "_y_exit"].astype(float).to_numpy()
 
-            n = len(x_start)
-            # Build NaN-separated segments: [x1, x2, nan, x3, x4, nan, ...]
-            x = np.empty(n * 3, dtype=float)
-            y = np.empty(n * 3, dtype=float)
-            x[0::3] = x_start
-            x[1::3] = x_end
-            x[2::3] = np.nan
-            y[0::3] = y_entry
-            y[1::3] = y_exit
-            y[2::3] = np.nan
+            if x_start.size == 0:
+                continue
 
-            color = self._outcome_colors.get(outcome, (160, 160, 160))
-            pen = pg.mkPen((*color, 200), width=1.8, style=QtCore.Qt.DashLine)
-            item = pg.PlotDataItem(x, y, pen=pen, name=outcome_names[outcome])
+            path = QPainterPath()
+            # Build many small segments via moveTo/lineTo
+            path.moveTo(float(x_start[0]), float(y_entry[0]))
+            path.lineTo(float(x_end[0]), float(y_exit[0]))
+            for i in range(1, len(x_start)):
+                path.moveTo(float(x_start[i]), float(y_entry[i]))
+                path.lineTo(float(x_end[i]), float(y_exit[i]))
+
+            item = QGraphicsPathItem(path)
+            r, g, b = self._outcome_colors.get(outcome, (160, 160, 160))
+            pen = QPen(QColor(r, g, b, 200))
+            pen.setCosmetic(True)
+            pen.setWidthF(1.8)
+            pen.setStyle(QtCore.Qt.DashLine)
+            item.setPen(pen)
+            item.setZValue(-1)  # behind markers
             self.plot.addItem(item)
             self._layers.append(item)
 
@@ -759,7 +818,7 @@ def create_candlestick_with_trades(
     *,
     time_mode: Literal["auto", "datetime", "bars"] = "auto",
     time_col: str = "time",
-    marker_size: int = 10,
+    marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
 ) -> PlotTradesWindow:
     """
     Create a PlotTradesWindow, add candlesticks, align, and render trade markers.
@@ -804,7 +863,7 @@ def show_candlestick_with_trades(
     title: str = "Candlestick + Trades",
     time_mode: Literal["auto", "datetime", "bars"] = "auto",
     time_col: str = "time",
-    marker_size: int = 10,
+    marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
     block: Optional[bool] = None,
 ) -> PlotTradesWindow:
     """
