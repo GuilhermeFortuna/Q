@@ -73,6 +73,7 @@ class PlotWindow(BaseWindow):
         self.graphWidget = pg.GraphicsLayoutWidget()
         self.setCentralWidget(self.graphWidget)
         self.setWindowTitle(title)
+        self.resize(1600, 800)
 
         # This will store the original datetime values for axis labeling
         self._time_values = None
@@ -234,6 +235,12 @@ class PlotWindow(BaseWindow):
         indicator_plot.showGrid(x=True, y=True, alpha=0.3)
         indicator_plot.setTitle(name)
 
+        # Disable autorange on the new plot. Otherwise, adding the bar item will
+        # cause it to zoom out to fit all data, and since the X-axis is linked,
+        # it will force the main plot to zoom out as well.
+        indicator_vb = indicator_plot.getViewBox()
+        indicator_vb.disableAutoRange()
+
         # Create BarGraphItem
         bar_item = pg.BarGraphItem(
             x=x_numeric.tolist(),
@@ -243,6 +250,11 @@ class PlotWindow(BaseWindow):
         )
         indicator_plot.addItem(bar_item)
         self._indicator_plots.append(indicator_plot)
+
+        # Set a manual Y-range for the histogram since auto-range is disabled.
+        if y is not None and not y.empty:
+            max_y = y.max()
+            indicator_vb.setYRange(0, max_y * 1.1)
 
 
 if __name__ == '__main__':
