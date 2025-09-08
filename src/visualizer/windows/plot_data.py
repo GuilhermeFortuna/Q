@@ -79,16 +79,17 @@ class PlotWindow(BaseWindow):
         # Store ohlc data for dynamic y-range adjustments
         self._ohlc_data = None
         self._initial_candles = initial_candles
+        self._indicator_plots = []
 
-        # Create a plot item
-        self.plot = self.graphWidget.addPlot(row=0, col=0)
-        self.plot.addLegend()
-        self.plot.showGrid(x=True, y=True, alpha=0.3)
+        # Create a plot item for price
+        self.price_plot = self.graphWidget.addPlot(row=0, col=0)
+        self.price_plot.addLegend()
+        self.price_plot.showGrid(x=True, y=True, alpha=0.3)
 
         # Disable auto-ranging and connect range change handler for dynamic Y zoom
-        vb = self.plot.getViewBox()
+        vb = self.price_plot.getViewBox()
         vb.disableAutoRange()
-        self.plot.sigXRangeChanged.connect(self._on_x_range_changed)
+        self.price_plot.sigXRangeChanged.connect(self._on_x_range_changed)
 
     def _on_x_range_changed(self):
         """
@@ -99,7 +100,7 @@ class PlotWindow(BaseWindow):
             return
 
         # Get the visible range of indices from the plot's view box
-        view_box = self.plot.getViewBox()
+        view_box = self.price_plot.getViewBox()
         x_range = view_box.viewRange()[0]
         start_index = max(0, int(x_range[0]))
         end_index = min(len(self._ohlc_data), int(x_range[1]) + 1)
@@ -136,18 +137,18 @@ class PlotWindow(BaseWindow):
         # Store the original timestamps and set up the custom axis
         self._time_values = pd.to_datetime(time_data).reset_index(drop=True)
         date_axis = DateAxis(timestamps=self._time_values.values, orientation='bottom')
-        self.plot.setAxisItems({'bottom': date_axis})
+        self.price_plot.setAxisItems({'bottom': date_axis})
 
         # Use integer indices for the x-axis to remove gaps
         df['time'] = self._time_values.index.to_list()
 
         candlestick = CandlestickItem(df)
-        self.plot.addItem(candlestick)
+        self.price_plot.addItem(candlestick)
 
         # Set the initial visible range to the last N candles
         num_candles = len(df)
         initial_view_start = max(0, num_candles - self._initial_candles)
-        self.plot.setXRange(initial_view_start, num_candles)
+        self.price_plot.setXRange(initial_view_start, num_candles)
 
     def add_line_plot(self, x, y, name, color, width) -> None:
         """
@@ -170,16 +171,85 @@ class PlotWindow(BaseWindow):
             x_numeric = x_series
 
         line = LinePlotItem(x_numeric.tolist(), y, name=name, color=color, width=width)
-        self.plot.addItem(line)
+        self.price_plot.addItem(line)
 
-    def add_histogram_plot(self, data) -> None:
-        pass
+    def add_scatter_plot(self, x, y, name, color, size, symbol):
+        """
+        Adds a scatter plot to the main price chart. Useful for plotting markers
+        like tops and bottoms.
+        :param x: A list or array of x-axis data (can be datetime objects).
+        :param y: A list or array of y-axis data.
+        :param name: Name of the scatter plot for the legend.
+        :param color: Color of the markers.
+        :param size: Size of the markers.
+        :param symbol: Shape of the markers (e.g., 'o', 's', 't', 'd', '+').
+        """
+        x_series = pd.Series(x)
+        if pd.api.types.is_datetime64_any_dtype(x_series.dtype):
+            if self._time_values is None:
+                raise ValueError(
+                    "A candlestick plot must be added first to establish a time axis."
+                )
+            # Map datetime values to integer indices using the stored time values
+            x_numeric = self._time_values.searchsorted(pd.to_datetime(x_series))
+        else:
+            x_numeric = x_series
+
+        scatter = pg.ScatterPlotItem(
+            x=x_numeric.tolist(),
+            y=y.tolist(),
+            name=name,
+            pen=pg.mkPen(None),
+            brush=pg.mkBrush(color),
+            size=size,
+            symbol=symbol,
+        )
+        self.price_plot.addItem(scatter)
+
+    def add_histogram_plot(self, x, y, name, color) -> None:
+        """
+        Adds a histogram-style plot (bar graph) in a new subplot below the main chart.
+        Useful for indicators like volume or MACD.
+        :param x: A list or array of x-axis data (can be datetime objects).
+        :param y: A list or array of y-axis data.
+        :param name: Name for the subplot's title.
+        :param color: Color of the histogram bars.
+        """
+        x_series = pd.Series(x)
+        if pd.api.types.is_datetime64_any_dtype(x_series.dtype):
+            if self._time_values is None:
+                raise ValueError(
+                    "A candlestick plot must be added first to establish a time axis."
+                )
+            # Map datetime values to integer indices using the stored time values
+            x_numeric = self._time_values.searchsorted(pd.to_datetime(x_series))
+        else:
+            x_numeric = x_series
+
+        # Create a new plot for the indicator
+        self.graphWidget.nextRow()
+        indicator_plot = self.graphWidget.addPlot(col=0)
+        indicator_plot.setXLink(self.price_plot)  # Link X axes
+        indicator_plot.setMaximumHeight(200)  # Give it a reasonable max height
+        indicator_plot.showGrid(x=True, y=True, alpha=0.3)
+        indicator_plot.setTitle(name)
+
+        # Create BarGraphItem
+        bar_item = pg.BarGraphItem(
+            x=x_numeric.tolist(),
+            height=y.tolist(),
+            width=0.6,
+            brush=pg.mkBrush(color),
+        )
+        indicator_plot.addItem(bar_item)
+        self._indicator_plots.append(indicator_plot)
 
 
 if __name__ == '__main__':
     import sys
     from datetime import datetime
     from src.backtester import CandleData
+    import numpy as np
 
     # Data parameters
     DATA_PATH = r'F:\New_Backup_03_2025\PyQuant\data\ccm_60min_atualizado.csv'
@@ -193,19 +263,51 @@ if __name__ == '__main__':
         (candle_data.index >= DATE_FROM) & (candle_data.index <= DATE_TO)
     ].copy()
 
+    # --- Example indicator data ---
+    # Simple Moving Average
+    candle_data['sma_20'] = candle_data['close'].rolling(20).mean()
+    # Volume data (assuming it exists in the CSV)
+    if 'volume' not in candle_data.columns:
+        candle_data['volume'] = np.random.randint(100, 10000, size=len(candle_data))
+    # Example scatter data (e.g., local maxima)
+    local_maxima = candle_data.loc[
+        (candle_data['high'].shift(1) < candle_data['high'])
+        & (candle_data['high'].shift(-1) < candle_data['high'])
+    ]
+
     q_app = QApplication(sys.argv)
     plot_window = PlotWindow(title="CCM Market Data Analysis", initial_candles=150)
 
     # Add candlestick plot first to define the time axis
     plot_window.add_candlestick_plot(candle_data)
 
-    # Example of adding a line plot for the 'close' price
+    # Example of adding a line plot for a moving average
     plot_window.add_line_plot(
         x=candle_data.index,
-        y=candle_data['close'],
-        name='Close Price',
-        color='yellow',
+        y=candle_data['sma_20'],
+        name='SMA(20)',
+        color='cyan',
         width=2,
     )
+
+    # Example of adding a scatter plot for local maxima
+    if not local_maxima.empty:
+        plot_window.add_scatter_plot(
+            x=local_maxima.index,
+            y=local_maxima['high'] * 1.01,  # Plot slightly above the high
+            name='Local Maxima',
+            color='magenta',
+            size=10,
+            symbol='d',  # Diamond symbol
+        )
+
+    # Example of adding a volume histogram in a subplot
+    plot_window.add_histogram_plot(
+        x=candle_data.index,
+        y=candle_data['volume'],
+        name='Volume',
+        color='gray',
+    )
+
     plot_window.show()
     sys.exit(q_app.exec())
