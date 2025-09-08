@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import QDateTime as PQtDateTime, Qt as PQt
 from PySide6.QtGui import QPainterPath, QPen, QColor
 
+from src.visualizer.models import IndicatorConfig
+
 DEFAULT_TRADE_MARKER_SIZE = 20
 
 
@@ -101,13 +103,22 @@ class PlotTradesWindow(PlotWindow):
         if trades is not None:
             self.set_trades(trades)
 
-    def add_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
+    def add_candlestick_plot(
+        self, ohlc: pd.DataFrame, show_volume: bool = False
+    ) -> None:
         """
-        Store ohlc data for re-rendering. The candlestick item is managed by _render.
+        Sets up the time axis and stores the OHLC data for deferred rendering
+        in the _render method. It does not draw the candlestick item itself.
         """
-        self._ohlc_data = ohlc.copy()
-        if "time" not in self._ohlc_data.columns:
-            self._ohlc_data["time"] = self._ohlc_data.index.copy()
+        # Call the new setup method from the parent to configure the time axis
+        # and get back the ohlc data with the correct integer 'time' column.
+        df_with_numeric_time = self.setup_time_axis(ohlc)
+        self._ohlc_data = df_with_numeric_time
+        # Note: We do NOT add the candlestick item here.
+        # That is handled by the self._render() method, which allows us
+        # to control the layering and visibility of all plot items.
+        if show_volume:
+            self.add_volume_subplot()
 
     # Integration helpers
     def use_datetime_axis(self) -> None:
@@ -816,6 +827,7 @@ def create_candlestick_with_trades(
     ohlc_data: pd.DataFrame,
     trades_df: pd.DataFrame,
     *,
+    indicators: Optional[list[IndicatorConfig]] = None,
     time_mode: Literal["auto", "datetime", "bars"] = "auto",
     time_col: str = "time",
     marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
@@ -838,7 +850,7 @@ def create_candlestick_with_trades(
     # This now calls the overridden method in PlotTradesWindow
     window.add_candlestick_plot(ohlc_data)
 
-    # Choose alignment mode
+    # Choose alignment mode first, so the time mapper is ready
     if time_mode == "datetime":
         window.use_datetime_axis()
     elif time_mode == "bars":
@@ -852,7 +864,21 @@ def create_candlestick_with_trades(
         else:
             window.use_datetime_axis()
 
+    # Set trades, which triggers the primary render of candles and trade markers
     window.set_trades(trades_df)
+
+    # Now, with the primary plot established, add the indicators
+    if indicators:
+        for config in indicators:
+            if config.type == "line":
+                window.add_line_plot(
+                    x=ohlc_data.index,
+                    y=config.y,
+                    name=config.name,
+                    color=config.color,
+                    width=config.width,
+                )
+
     return window
 
 
@@ -861,6 +887,7 @@ def show_candlestick_with_trades(
     trades_df: pd.DataFrame,
     *,
     title: str = "Candlestick + Trades",
+    indicators: Optional[list[IndicatorConfig]] = None,
     time_mode: Literal["auto", "datetime", "bars"] = "auto",
     time_col: str = "time",
     marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
@@ -890,6 +917,7 @@ def show_candlestick_with_trades(
     window = create_candlestick_with_trades(
         ohlc_data=ohlc_data,
         trades_df=trades_df,
+        indicators=indicators,
         time_mode=time_mode,
         time_col=time_col,
         marker_size=marker_size,

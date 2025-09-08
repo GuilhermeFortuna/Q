@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 import pyqtgraph as pg
 import pandas as pd
 import numpy as np
-from src.visualizer.models import BacktestResultModel
+from src.visualizer.models import BacktestResultModel, IndicatorConfig
 
 
 def _as_dict(results: Any) -> Mapping[str, Any]:
@@ -638,10 +638,34 @@ class BacktestSummaryWindow(QMainWindow):
         try:
             from src.visualizer.windows.plot_trades import show_candlestick_with_trades
 
+            # Auto-detect indicator columns from the ohlc_df
+            indicators = []
+            if self.model.ohlc_df is not None:
+                standard_cols = {"open", "high", "low", "close", "volume", "time"}
+                indicator_cols = [
+                    col
+                    for col in self.model.ohlc_df.columns
+                    if col.lower() not in standard_cols
+                ]
+
+                # Define a cycle of colors for the indicators
+                plot_colors = ["#00FFFF", "#FF00FF", "#FFFF00", "#FFA500", "#DA70D6"]
+
+                for i, col_name in enumerate(indicator_cols):
+                    indicators.append(
+                        IndicatorConfig(
+                            type="line",
+                            y=self.model.ohlc_df[col_name],
+                            name=col_name.upper(),
+                            color=plot_colors[i % len(plot_colors)],
+                        )
+                    )
+
             # Store the new window in an instance attribute to keep it alive
             self._trades_chart_window = show_candlestick_with_trades(
                 ohlc_data=self.model.ohlc_df,
                 trades_df=self.model.trades_df,
+                indicators=indicators,
                 title="Trades Chart",
                 block=False,
             )
