@@ -11,6 +11,7 @@ __all__ = ["show_chart"]
 def show_chart(
     ohlc_data: pd.DataFrame,
     indicators: list[IndicatorConfig] = None,
+    show_volume: bool = False,
     title: str = "Market Data",
     initial_candles: int = 100,
     block: bool = True,
@@ -35,7 +36,7 @@ def show_chart(
     :return: The `PlotWindow` instance if `block` is False.
 
     Example Usage:
-    -------------
+    ---------------
     >>> from src.visualizer.models import IndicatorConfig
     >>> sma = ohlc_data['close'].rolling(20).mean()
     >>> volume = ohlc_data['volume']
@@ -50,7 +51,7 @@ def show_chart(
         app = QApplication(sys.argv)
 
     window = PlotWindow(title=title, initial_candles=initial_candles)
-    window.add_candlestick_plot(ohlc_data)
+    window.add_candlestick_plot(ohlc=ohlc_data, show_volume=show_volume)
 
     if indicators:
         for indicator in indicators:

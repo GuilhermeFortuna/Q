@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pandas-ta"
+version = "0.3.14b0"
+description = "Technical Analysis Indicators - vendored copy"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+include = ["pandas_ta*"]

@@ -1,9 +1,9 @@
+import pandas as pd
 import pyqtgraph as pg
 from PySide6.QtWidgets import QApplication
+
 from src.visualizer.plots import CandlestickItem
 from src.visualizer.plots import LinePlotItem
-import pandas as pd
-
 from src.visualizer.windows.base import BaseWindow
 
 
@@ -121,7 +121,9 @@ class PlotWindow(BaseWindow):
         y_padding = (max_high - min_low) * 0.1
         view_box.setYRange(min_low - y_padding, max_high + y_padding, padding=0)
 
-    def add_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
+    def add_candlestick_plot(
+        self, ohlc: pd.DataFrame, show_volume: bool = False
+    ) -> None:
         """
         Adds a candlestick plot to the window.
         This method sets up a custom x-axis to display datetimes without gaps.
@@ -150,6 +152,10 @@ class PlotWindow(BaseWindow):
         num_candles = len(df)
         initial_view_start = max(0, num_candles - self._initial_candles)
         self.price_plot.setXRange(initial_view_start, num_candles)
+
+        # Optionally, add volume subplot
+        if show_volume:
+            self.add_volume_subplot()
 
     def add_line_plot(self, x, y, name, color, width) -> None:
         """
@@ -207,14 +213,49 @@ class PlotWindow(BaseWindow):
         )
         self.price_plot.addItem(scatter)
 
-    def add_histogram_plot(self, x, y, name, color) -> None:
+    def add_volume_subplot(self):
+        """
+        Adds a volume subplot with bars colored based on the candle's direction.
+        Green for positive (close >= open) and red for negative (close < open).
+        Requires 'open', 'close', and 'volume' columns in the OHLC data.
+        """
+        if self._ohlc_data is None or not all(
+            c in self._ohlc_data for c in ['open', 'close', 'volume']
+        ):
+            print(
+                "Warning: OHLC data with 'open', 'close', and 'volume' is required for the volume subplot."
+            )
+            return
+        if self._time_values is None:
+            print("Warning: Time values not set. Add a candlestick plot first.")
+            return
+
+        # Determine colors based on candle direction
+        brushes = [
+            (
+                pg.mkBrush(color='#00FF00')
+                if row.close >= row.open
+                else pg.mkBrush(color='#FF0000')
+            )
+            for row in self._ohlc_data.itertuples()
+        ]
+
+        self.add_histogram_plot(
+            x=self._time_values,
+            y=self._ohlc_data['volume'],
+            name="Volume",
+            brushes=brushes,
+        )
+
+    def add_histogram_plot(self, x, y, name, color=None, brushes=None) -> None:
         """
         Adds a histogram-style plot (bar graph) in a new subplot below the main chart.
         Useful for indicators like volume or MACD.
         :param x: A list or array of x-axis data (can be datetime objects).
         :param y: A list or array of y-axis data.
         :param name: Name for the subplot's title.
-        :param color: Color of the histogram bars.
+        :param color: Color of the histogram bars (if brushes are not provided).
+        :param brushes: A list of brushes for coloring each bar individually.
         """
         x_series = pd.Series(x)
         if pd.api.types.is_datetime64_any_dtype(x_series.dtype):
@@ -242,12 +283,21 @@ class PlotWindow(BaseWindow):
         indicator_vb.disableAutoRange()
 
         # Create BarGraphItem
-        bar_item = pg.BarGraphItem(
-            x=x_numeric.tolist(),
-            height=y.tolist(),
-            width=0.6,
-            brush=pg.mkBrush(color),
-        )
+        bar_args = {
+            'x': x_numeric.tolist(),
+            'height': y.tolist(),
+            'width': 0.6,
+        }
+        if brushes:
+            bar_args['brushes'] = brushes
+        elif color:
+            bar_args['brush'] = pg.mkBrush(color)
+        else:
+            # Default color if neither is provided
+            bar_args['brush'] = pg.mkBrush('gray')
+
+        bar_item = pg.BarGraphItem(**bar_args)
+
         indicator_plot.addItem(bar_item)
         self._indicator_plots.append(indicator_plot)
 
@@ -262,7 +312,6 @@ if __name__ == '__main__':
     from datetime import datetime, timedelta
     from src.backtester import CandleData
     import pandas_ta as pta
-    import numpy as np
 
     # Data parameters
     symbol = 'DOL$'
@@ -316,7 +365,7 @@ if __name__ == '__main__':
     )
 
     # Example of adding a volume histogram in a subplot
-    plot_window.add_histogram_plot(
+    plot_window.add_histogram_subplot(
         x=candle_data.index,
         y=candle_data['volume'],
         name='Volume',

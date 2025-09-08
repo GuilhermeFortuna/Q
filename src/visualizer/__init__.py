@@ -5,9 +5,16 @@ from src.visualizer.models import BacktestResultModel
 import pandas as pd
 
 __all__ = [
-    'PlotWindow', 'create_candlestick_plot', 'create_line_plot', 'create_plot_window', 
-    'show_candlestick', 'show_line_plot', 'show_backtest_summary', 'BacktestResultModel'
+    'PlotWindow',
+    'create_candlestick_plot',
+    'create_line_plot',
+    'create_plot_window',
+    'show_candlestick',
+    'show_line_plot',
+    'show_backtest_summary',
+    'BacktestResultModel',
 ]
+
 
 def _ensure_qapplication():
     """
@@ -23,6 +30,7 @@ def _ensure_qapplication():
     if app is None:
         app = QApplication(sys.argv)
     return app
+
 
 def _should_exec_app():
     """
@@ -70,7 +78,9 @@ def _should_exec_app():
 
     return True
 
+
 # Utility functions for quick plotting
+
 
 def create_plot_window(title: str = "Market Data") -> PlotWindow:
     """
@@ -87,7 +97,10 @@ def create_plot_window(title: str = "Market Data") -> PlotWindow:
     window.setWindowTitle(title)
     return window
 
-def create_candlestick_plot(ohlc_data: pd.DataFrame, window: PlotWindow = None) -> PlotWindow:
+
+def create_candlestick_plot(
+    ohlc_data: pd.DataFrame, show_volume: bool = False, window: PlotWindow = None
+) -> PlotWindow:
     """
     Create a candlestick plot from OHLC data.
 
@@ -102,11 +115,18 @@ def create_candlestick_plot(ohlc_data: pd.DataFrame, window: PlotWindow = None) 
         _ensure_qapplication()  # Ensure QApplication exists
         window = create_plot_window("Candlestick Chart")
 
-    window.add_candlestick_plot( ohlc_data )
+    window.add_candlestick_plot(ohlc=ohlc_data, show_volume=show_volume)
     return window
 
-def create_line_plot(x, y, name: str = "Line", color: str = 'yellow',
-                     width: int = 2, window: PlotWindow = None) -> PlotWindow:
+
+def create_line_plot(
+    x,
+    y,
+    name: str = "Line",
+    color: str = 'yellow',
+    width: int = 2,
+    window: PlotWindow = None,
+) -> PlotWindow:
     """
     Create a line plot from x, y data.
 
@@ -125,11 +145,13 @@ def create_line_plot(x, y, name: str = "Line", color: str = 'yellow',
         _ensure_qapplication()  # Ensure QApplication exists
         window = create_plot_window(f"Line Chart - {name}")
 
-    window.add_line_plot( x, y, name, color, width )
+    window.add_line_plot(x, y, name, color, width)
     return window
 
-def show_candlestick(ohlc_data: pd.DataFrame, title: str = "Candlestick Chart",
-                     block: bool = None) -> PlotWindow:
+
+def show_candlestick(
+    ohlc_data: pd.DataFrame, title: str = "Candlestick Chart", block: bool = None
+) -> PlotWindow:
     """
     Quickly display a candlestick chart in a new window.
 
@@ -161,11 +183,20 @@ def show_candlestick(ohlc_data: pd.DataFrame, title: str = "Candlestick Chart",
     except Exception as e:
         print(f"Error displaying candlestick chart: {e}")
         import traceback
+
         traceback.print_exc()  # This will help debug the issue
         return None
 
-def show_line_plot(x, y, name: str = "Line", color: str = 'yellow',
-                   width: int = 2, title: str = None, block: bool = None) -> PlotWindow:
+
+def show_line_plot(
+    x,
+    y,
+    name: str = "Line",
+    color: str = 'yellow',
+    width: int = 2,
+    title: str = None,
+    block: bool = None,
+) -> PlotWindow:
     """
     Quickly display a line plot in a new window.
 
@@ -204,5 +235,6 @@ def show_line_plot(x, y, name: str = "Line", color: str = 'yellow',
     except Exception as e:
         print(f"Error displaying line plot: {e}")
         import traceback
+
         traceback.print_exc()  # This will help debug the issue
         return None
