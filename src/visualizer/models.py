@@ -36,7 +36,14 @@ class BacktestResultModel:
             self._result = result or {}
             self._trades_df = trades_df
 
-        self._ohlc_df = ohlc_df
+        # Store OHLC data with proper validation
+        if ohlc_df is not None:
+            if isinstance(ohlc_df, pd.DataFrame) and not ohlc_df.empty:
+                self.ohlc_df = ohlc_df
+            else:
+                self.ohlc_df = None
+        else:
+            self.ohlc_df = None
 
         # Normalize and validate data
         self._normalize_data()
@@ -100,6 +107,17 @@ class BacktestResultModel:
     def ohlc_df(self) -> Optional[pd.DataFrame]:
         """Get the OHLC DataFrame."""
         return self._ohlc_df
+
+    @ohlc_df.setter
+    def ohlc_df(self, value: Optional[pd.DataFrame]) -> None:
+        """Set the OHLC DataFrame with validation."""
+        if value is not None:
+            if isinstance(value, pd.DataFrame) and not value.empty:
+                self._ohlc_df = value
+            else:
+                self._ohlc_df = None
+        else:
+            self._ohlc_df = None
 
     @property
     def balance(self) -> Optional[pd.Series]:
