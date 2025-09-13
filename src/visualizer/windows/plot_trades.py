@@ -69,6 +69,9 @@ class PlotTradesWindow(PlotWindow):
         # Plot items
         self._candlestick_item: Optional[pg.GraphicsObject] = None
         self._layers: list[pg.GraphicsObject] = []
+        # Track indicator definitions and their items so we can re-render them on filter
+        self._indicator_lines: list[dict] = []
+        self._indicator_items: list[pg.PlotDataItem] = []
 
         # Rendering options
         self._filter_candles = True
@@ -153,22 +156,35 @@ class PlotTradesWindow(PlotWindow):
         This override ensures compatibility with indicators by preserving
         the parent's time axis setup while maintaining trades-specific rendering.
         """
-        # Call the parent method to properly set up time axis and OHLC data
-        # This ensures indicators work correctly
-        super().add_candlestick_plot(ohlc, show_volume=False)
-
-        # Store the OHLC data for trades-specific rendering
-        # The parent method already calls setup_time_axis, so we don't need to repeat it
-        if self._ohlc_data is None:
-            self._ohlc_data = super().setup_time_axis(ohlc)
-
-        # Note: We do NOT add the candlestick item here.
-        # That is handled by the self._render() method, which allows us
-        # to control the layering and visibility of all plot items.
+        # Call ONLY the parent's time-axis setup so no candlestick item is added here
+        self._ohlc_data = super().setup_time_axis(ohlc)
 
         # Handle volume subplot if requested
         if show_volume:
             self.add_volume_subplot()
+
+    # --- New: register indicator lines managed by this window ---
+    def add_indicator_line(
+        self,
+        *,
+        x: pd.Index | pd.Series,
+        y: pd.Series | np.ndarray | list[float],
+        name: str = "",
+        color: tuple[int, int, int] | str = (180, 180, 255),
+        width: float = 1.5,
+    ) -> None:
+        """
+        Register a line indicator to be re-rendered on every _render() call,
+        sliced to the active time filter.
+        """
+        # Normalize x to a pandas Index for easy time slicing
+        x_idx = pd.Index(x)
+        y_ser = pd.Series(y, index=x_idx)
+        self._indicator_lines.append(
+            dict(x_index=x_idx, y=y_ser, name=name, color=color, width=width)
+        )
+        # Render immediately with current filter
+        self._render()
 
     # Integration helpers
     def use_datetime_axis(self) -> None:
@@ -273,6 +289,13 @@ class PlotTradesWindow(PlotWindow):
             except Exception:
                 pass
         self._layers.clear()
+        # Also clear previously drawn indicator items (they will be re-added in _render)
+        for it in self._indicator_items:
+            try:
+                self.plot.removeItem(it)
+            except Exception:
+                pass
+        self._indicator_items.clear()
 
     def _precompute_trade_fields(self) -> None:
         """
@@ -739,31 +762,67 @@ class PlotTradesWindow(PlotWindow):
             self.plot.removeItem(self._candlestick_item)
             self._candlestick_item = None
 
-        # Render candlesticks ONLY if we haven't already done so via parent methods
+        # Render candlesticks we manage here (filtered when requested)
         ohlc_to_render = self._ohlc_data
+        rendered_index = None
         if ohlc_to_render is not None and not ohlc_to_render.empty:
-            # Check if parent already added candlestick items
-            existing_candlesticks = [
-                item for item in self.plot.items if hasattr(item, 'generatePicture')
-            ]
+            start, end = self.get_time_filter()
+            if self._filter_candles and start and end:
+                if isinstance(ohlc_to_render.index, pd.DatetimeIndex):
+                    ohlc_to_render = ohlc_to_render.loc[
+                        ohlc_to_render.index.to_series().between(start, end)
+                    ]
+            # keep the effective index to slice indicators the same way
+            if ohlc_to_render is not None and not ohlc_to_render.empty:
+                rendered_index = ohlc_to_render.index
 
-            if not existing_candlesticks:  # Only add if none exist
-                start, end = self.get_time_filter()
-                if self._filter_candles and start and end:
-                    if isinstance(ohlc_to_render.index, pd.DatetimeIndex):
-                        ohlc_to_render = ohlc_to_render.loc[
-                            ohlc_to_render.index.to_series().between(start, end)
-                        ]
+            if not ohlc_to_render.empty:
+                CandlestickItem = self.PLOT_TYPE_MAP["candlestick"]
+                self._candlestick_item = CandlestickItem(ohlc_to_render)
+                self.plot.addItem(self._candlestick_item)
 
-                if not ohlc_to_render.empty:
-                    CandlestickItem = self.PLOT_TYPE_MAP["candlestick"]
-                    self._candlestick_item = CandlestickItem(ohlc_to_render)
-                    self.plot.addItem(self._candlestick_item)
+        # --- Render indicator lines (slice by the same time filter/index) ---
+        if self._indicator_lines:
+            # If we do not have an OHLC index (rare), fall back to filter bounds
+            start, end = self.get_time_filter()
+            for cfg in self._indicator_lines:
+                x_idx: pd.Index = cfg["x_index"]
+                y_ser: pd.Series = cfg["y"]
+                if self._filter_candles and start is not None and end is not None:
+                    if isinstance(x_idx, pd.DatetimeIndex):
+                        mask = x_idx.to_series().between(start, end)
+                        x_slice = x_idx[mask]
+                        y_slice = y_ser.loc[x_slice]
+                    else:
+                        # Fallback: slice by position if we have a rendered_index from OHLC
+                        if isinstance(rendered_index, pd.DatetimeIndex):
+                            # intersect indices to preserve alignment
+                            common = x_idx.intersection(rendered_index)
+                            x_slice = common
+                            y_slice = y_ser.loc[common]
+                        else:
+                            x_slice = x_idx
+                            y_slice = y_ser
+                else:
+                    x_slice = x_idx
+                    y_slice = y_ser
+
+                if len(x_slice) == 0:
+                    continue
+
+                pen = pg.mkPen(cfg["color"], width=cfg["width"])
+                item = pg.PlotDataItem(
+                    x=x_slice.values,
+                    y=np.asarray(y_slice.values, dtype=float),
+                    pen=pen,
+                    name=cfg["name"],
+                )
+                item.setZValue(2)  # draw above candles, below markers
+                self.plot.addItem(item)
+                self._indicator_items.append(item)
 
         if self.trades is None or self.trades.empty:
-            self._update_plot_view_range(
-                pd.DataFrame()
-            )  # Pass empty to maybe reset zoom
+            self._update_plot_view_range(pd.DataFrame())
             return
 
         df = self._apply_time_filter()
@@ -1411,11 +1470,11 @@ def create_candlestick_with_trades(
     # Set trades, which triggers the primary render of candles and trade markers
     window.set_trades(trades_df)
 
-    # Now, with the primary plot established, add the indicators
+    # Now, with the primary plot established, register indicators so they are filter-aware
     if indicators:
         for config in indicators:
             if config.type == "line":
-                window.add_line_plot(
+                window.add_indicator_line(
                     x=ohlc_data.index,
                     y=config.y,
                     name=config.name,
