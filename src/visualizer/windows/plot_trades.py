@@ -781,7 +781,7 @@ class PlotTradesWindow(PlotWindow):
             side_ent = df["_side"].astype(str).to_numpy()
             if x_ent.size > 0:
                 # Symbols: triangle up for buy ('t'), triangle down for sell ('t1')
-                symbols_ent = np.where(side_ent == "buy", "t", "t1")
+                symbols_ent = np.where(side_ent == "buy", "t1", "t")
                 # Colors by side
                 condition = (side_ent == "buy")[:, np.newaxis]
                 colors_ent = np.where(
