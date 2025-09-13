@@ -121,6 +121,28 @@ class PlotWindow(BaseWindow):
         y_padding = (max_high - min_low) * 0.1
         view_box.setYRange(min_low - y_padding, max_high + y_padding, padding=0)
 
+    def setup_time_axis(self, ohlc: pd.DataFrame) -> pd.DataFrame:
+        """
+        Sets up the custom time axis based on the OHLC data.
+        Returns a DataFrame with the numeric 'time' column for plotting.
+        """
+        df = ohlc.copy()
+        # If a numeric 'time' column is provided, use the index for datetime values.
+        # Otherwise, assume the index is the primary source for datetimes.
+        if 'time' in df.columns and pd.api.types.is_numeric_dtype(df['time']):
+            time_data = df.index.to_series()
+            # The df already has the correct integer indices in the 'time' column.
+        else:
+            time_data = df.index.to_series()
+            # Create integer indices for the x-axis to remove gaps
+            df['time'] = list(range(len(df)))
+
+        # Store the original timestamps and set up the custom axis
+        self._time_values = pd.to_datetime(time_data).reset_index(drop=True)
+        date_axis = DateAxis(timestamps=self._time_values.values, orientation='bottom')
+        self.price_plot.setAxisItems({'bottom': date_axis})
+        return df
+
     def add_candlestick_plot(
         self, ohlc: pd.DataFrame, show_volume: bool = False
     ) -> None:
@@ -129,27 +151,16 @@ class PlotWindow(BaseWindow):
         This method sets up a custom x-axis to display datetimes without gaps.
         :param ohlc: DataFrame with open, high, low, close columns and a datetime index.
         """
-        df = ohlc.copy()
-        self._ohlc_data = df.reset_index(drop=True)  # Store for y-range adjustments
+        df_with_numeric_time = self.setup_time_axis(ohlc)
+        self._ohlc_data = df_with_numeric_time.reset_index(
+            drop=True
+        )  # Store for y-range adjustments
 
-        if 'time' not in df.columns:
-            time_data = df.index.to_series()
-        else:
-            time_data = df['time']
-
-        # Store the original timestamps and set up the custom axis
-        self._time_values = pd.to_datetime(time_data).reset_index(drop=True)
-        date_axis = DateAxis(timestamps=self._time_values.values, orientation='bottom')
-        self.price_plot.setAxisItems({'bottom': date_axis})
-
-        # Use integer indices for the x-axis to remove gaps
-        df['time'] = self._time_values.index.to_list()
-
-        candlestick = CandlestickItem(df)
+        candlestick = CandlestickItem(df_with_numeric_time)
         self.price_plot.addItem(candlestick)
 
         # Set the initial visible range to the last N candles
-        num_candles = len(df)
+        num_candles = len(df_with_numeric_time)
         initial_view_start = max(0, num_candles - self._initial_candles)
         self.price_plot.setXRange(initial_view_start, num_candles)
 
