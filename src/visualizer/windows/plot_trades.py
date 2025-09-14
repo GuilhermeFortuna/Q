@@ -6,6 +6,7 @@ import pyqtgraph as pg
 from pyqtgraph import QtCore
 from typing import Optional, Callable, Literal
 import datetime as dt
+import math
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -17,8 +18,15 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
     QCheckBox,
+    QSpinBox,
+    QGraphicsPathItem,
 )
 from PySide6.QtCore import QDateTime as PQtDateTime, Qt as PQt
+from PySide6.QtGui import QPainterPath, QPen, QColor
+
+from src.visualizer.models import IndicatorConfig
+
+DEFAULT_TRADE_MARKER_SIZE = 20
 
 
 class PlotTradesWindow(PlotWindow):
@@ -39,10 +47,20 @@ class PlotTradesWindow(PlotWindow):
     :type trades: Optional[pandas.DataFrame]
     """
 
-    def __init__(self, trades: Optional[pd.DataFrame] = None, *, marker_size: int = 10):
+    def __init__(
+        self,
+        trades: Optional[pd.DataFrame] = None,
+        *,
+        marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
+    ):
         super().__init__()
         self.setWindowTitle("Trades")
         self.marker_size = marker_size
+
+        # Ensure plot reference consistency for indicators
+        self.plot = (
+            self.price_plot
+        )  # This line should come immediately after super().__init__()
 
         # Data
         self._ohlc_data: Optional[pd.DataFrame] = None
@@ -51,6 +69,9 @@ class PlotTradesWindow(PlotWindow):
         # Plot items
         self._candlestick_item: Optional[pg.GraphicsObject] = None
         self._layers: list[pg.GraphicsObject] = []
+        # Track indicator definitions and their items so we can re-render them on filter
+        self._indicator_lines: list[dict] = []
+        self._indicator_items: list[pg.PlotDataItem] = []
 
         # Rendering options
         self._filter_candles = True
@@ -65,7 +86,10 @@ class PlotTradesWindow(PlotWindow):
         self._filtered_trades: Optional[pd.DataFrame] = None
 
         # Colors/symbols
-        self._colors = {"buy": (0, 200, 0), "sell": (220, 50, 50)}
+        self._colors = {
+            "buy": (40, 220, 130),
+            "sell": (255, 90, 90),
+        }  # Distinct Red/Green Tones
         self._entry_symbols = {"buy": "t", "sell": "t1"}
         self._exit_symbol = "o"
         # Outcome colors for future link/annotation usage
@@ -75,6 +99,27 @@ class PlotTradesWindow(PlotWindow):
             "flat": (160, 160, 160),
         }
 
+        # Hover/Tooltip configuration (defaults)
+        self.hover_enabled: bool = True
+        self.tooltip_enabled: bool = True
+        self.tooltip_delay_ms: int = 180
+        self.hover_pick_radius_px: int = 12
+        self.tooltip_fields: list[str] = [
+            "side",
+            "outcome",
+            "entry_time",
+            "entry_price",
+            "exit_time",
+            "exit_price",
+            "amount",
+            "profit_or_delta",
+            "duration",
+        ]
+
+        # Internal hover state/controller
+        self._hover_controller: Optional["TradeHoverController"] = None
+        self._hover_debounce_timer: Optional[QtCore.QTimer] = None
+
         # Mapping: datetime -> x
         self._time_mapper: Optional[Callable[[pd.Series], pd.Series]] = None
         # Default to datetime mode (POSIX timestamps)
@@ -83,16 +128,63 @@ class PlotTradesWindow(PlotWindow):
         # Initialize time filter UI
         self._init_time_filter_ui()
 
+        # Instantiate hover controller after plot and UI are ready
+        try:
+            vb = self.plot.getViewBox()
+            self._hover_controller = TradeHoverController(self, self.plot, vb)
+            self._hover_controller.set_config(
+                hover_enabled=self.hover_enabled,
+                tooltip_enabled=self.tooltip_enabled,
+                tooltip_delay_ms=self.tooltip_delay_ms,
+                hover_pick_radius_px=self.hover_pick_radius_px,
+                tooltip_fields=self.tooltip_fields,
+            )
+        except Exception:
+            # In headless/test environments, plot may not be ready; controller will be created lazily later.
+            self._hover_controller = None
+
         if trades is not None:
             self.set_trades(trades)
 
-    def add_candlestick_plot(self, ohlc: pd.DataFrame) -> None:
+    def add_candlestick_plot(
+        self, ohlc: pd.DataFrame, show_volume: bool = False
+    ) -> None:
         """
-        Store ohlc data for re-rendering. The candlestick item is managed by _render.
+        Sets up the time axis and stores the OHLC data for deferred rendering
+        in the _render method. It does not draw the candlestick item itself.
+
+        This override ensures compatibility with indicators by preserving
+        the parent's time axis setup while maintaining trades-specific rendering.
         """
-        self._ohlc_data = ohlc.copy()
-        if "time" not in self._ohlc_data.columns:
-            self._ohlc_data["time"] = self._ohlc_data.index.copy()
+        # Call ONLY the parent's time-axis setup so no candlestick item is added here
+        self._ohlc_data = super().setup_time_axis(ohlc)
+
+        # Handle volume subplot if requested
+        if show_volume:
+            self.add_volume_subplot()
+
+    # --- New: register indicator lines managed by this window ---
+    def add_indicator_line(
+        self,
+        *,
+        x: pd.Index | pd.Series,
+        y: pd.Series | np.ndarray | list[float],
+        name: str = "",
+        color: tuple[int, int, int] | str = (180, 180, 255),
+        width: float = 1.5,
+    ) -> None:
+        """
+        Register a line indicator to be re-rendered on every _render() call,
+        sliced to the active time filter.
+        """
+        # Normalize x to a pandas Index for easy time slicing
+        x_idx = pd.Index(x)
+        y_ser = pd.Series(y, index=x_idx)
+        self._indicator_lines.append(
+            dict(x_index=x_idx, y=y_ser, name=name, color=color, width=width)
+        )
+        # Render immediately with current filter
+        self._render()
 
     # Integration helpers
     def use_datetime_axis(self) -> None:
@@ -197,6 +289,13 @@ class PlotTradesWindow(PlotWindow):
             except Exception:
                 pass
         self._layers.clear()
+        # Also clear previously drawn indicator items (they will be re-added in _render)
+        for it in self._indicator_items:
+            try:
+                self.plot.removeItem(it)
+            except Exception:
+                pass
+        self._indicator_items.clear()
 
     def _precompute_trade_fields(self) -> None:
         """
@@ -350,6 +449,30 @@ class PlotTradesWindow(PlotWindow):
         outcome_row.addWidget(self._cmb_outcome_filter)
         vbox.addLayout(outcome_row)
 
+        # Hover/Tooltip controls
+        vbox.addSpacing(10)
+        hover_label = QLabel("Hover / Tooltip")
+        vbox.addWidget(hover_label)
+
+        self._chk_hover_enabled = QCheckBox("Hover highlight")
+        self._chk_hover_enabled.setChecked(self.hover_enabled)
+        self._chk_hover_enabled.stateChanged.connect(self._on_hover_enabled_changed)
+        vbox.addWidget(self._chk_hover_enabled)
+
+        tip_row = QHBoxLayout()
+        self._chk_tooltip_enabled = QCheckBox("Show tooltips")
+        self._chk_tooltip_enabled.setChecked(self.tooltip_enabled)
+        self._chk_tooltip_enabled.stateChanged.connect(self._on_tooltip_enabled_changed)
+        tip_row.addWidget(self._chk_tooltip_enabled)
+        tip_row.addWidget(QLabel("Delay (ms):"))
+        self._spn_tooltip_delay = QSpinBox()
+        self._spn_tooltip_delay.setRange(0, 1000)
+        self._spn_tooltip_delay.setSingleStep(10)
+        self._spn_tooltip_delay.setValue(self.tooltip_delay_ms)
+        self._spn_tooltip_delay.valueChanged.connect(self._on_tooltip_delay_changed)
+        tip_row.addWidget(self._spn_tooltip_delay)
+        vbox.addLayout(tip_row)
+
         w.setLayout(vbox)
         self._filter_dock.setWidget(w)
         self.addDockWidget(PQt.RightDockWidgetArea, self._filter_dock)
@@ -382,6 +505,44 @@ class PlotTradesWindow(PlotWindow):
         self._outcome_filter = text
         self._render()
 
+    # Hover/Tooltip handlers
+    def _on_hover_enabled_changed(self, state: int) -> None:
+        self.hover_enabled = bool(state)
+        if self._hover_controller:
+            self._hover_controller.set_config(
+                hover_enabled=self.hover_enabled,
+                tooltip_enabled=self.tooltip_enabled,
+                tooltip_delay_ms=self.tooltip_delay_ms,
+                hover_pick_radius_px=self.hover_pick_radius_px,
+                tooltip_fields=self.tooltip_fields,
+            )
+            if not self.hover_enabled:
+                self._hover_controller.clear_hover()
+
+    def _on_tooltip_enabled_changed(self, state: int) -> None:
+        self.tooltip_enabled = bool(state)
+        if self._hover_controller:
+            self._hover_controller.set_config(
+                hover_enabled=self.hover_enabled,
+                tooltip_enabled=self.tooltip_enabled,
+                tooltip_delay_ms=self.tooltip_delay_ms,
+                hover_pick_radius_px=self.hover_pick_radius_px,
+                tooltip_fields=self.tooltip_fields,
+            )
+            if not self.tooltip_enabled:
+                self._hover_controller.hide_tooltip()
+
+    def _on_tooltip_delay_changed(self, value: int) -> None:
+        self.tooltip_delay_ms = int(value)
+        if self._hover_controller:
+            self._hover_controller.set_config(
+                hover_enabled=self.hover_enabled,
+                tooltip_enabled=self.tooltip_enabled,
+                tooltip_delay_ms=self.tooltip_delay_ms,
+                hover_pick_radius_px=self.hover_pick_radius_px,
+                tooltip_fields=self.tooltip_fields,
+            )
+
     def _set_filter_controls_enabled(self, enabled: bool) -> None:
         for widget in (
             self._cmb_quick_range,
@@ -394,8 +555,12 @@ class PlotTradesWindow(PlotWindow):
             self._chk_show_exits,
             self._chk_show_links,
             self._cmb_outcome_filter,
+            getattr(self, "_chk_hover_enabled", None),
+            getattr(self, "_chk_tooltip_enabled", None),
+            getattr(self, "_spn_tooltip_delay", None),
         ):
-            widget.setEnabled(enabled)
+            if widget is not None:
+                widget.setEnabled(enabled)
 
     def _refresh_filter_controls_bounds(self) -> None:
         """Set min/max bounds of editors based on trades and initialize values if needed."""
@@ -586,31 +751,78 @@ class PlotTradesWindow(PlotWindow):
 
     # Internal
     def _render(self) -> None:
+        # Clear hover overlay early to avoid stale highlights during re-render
+        if self._hover_controller:
+            self._hover_controller.clear_hover()
         self.clear_trades()
+
+        # Only remove candlestick if we added it ourselves
+        # Don't remove indicators that were added by the parent methods
         if self._candlestick_item:
             self.plot.removeItem(self._candlestick_item)
             self._candlestick_item = None
 
-        # Render candlesticks
+        # Render candlesticks we manage here (filtered when requested)
         ohlc_to_render = self._ohlc_data
+        rendered_index = None
         if ohlc_to_render is not None and not ohlc_to_render.empty:
             start, end = self.get_time_filter()
             if self._filter_candles and start and end:
                 if isinstance(ohlc_to_render.index, pd.DatetimeIndex):
-                    # Slice data, ensuring we don't fail on missing dates
                     ohlc_to_render = ohlc_to_render.loc[
                         ohlc_to_render.index.to_series().between(start, end)
                     ]
+            # keep the effective index to slice indicators the same way
+            if ohlc_to_render is not None and not ohlc_to_render.empty:
+                rendered_index = ohlc_to_render.index
 
             if not ohlc_to_render.empty:
                 CandlestickItem = self.PLOT_TYPE_MAP["candlestick"]
                 self._candlestick_item = CandlestickItem(ohlc_to_render)
                 self.plot.addItem(self._candlestick_item)
 
+        # --- Render indicator lines (slice by the same time filter/index) ---
+        if self._indicator_lines:
+            # If we do not have an OHLC index (rare), fall back to filter bounds
+            start, end = self.get_time_filter()
+            for cfg in self._indicator_lines:
+                x_idx: pd.Index = cfg["x_index"]
+                y_ser: pd.Series = cfg["y"]
+                if self._filter_candles and start is not None and end is not None:
+                    if isinstance(x_idx, pd.DatetimeIndex):
+                        mask = x_idx.to_series().between(start, end)
+                        x_slice = x_idx[mask]
+                        y_slice = y_ser.loc[x_slice]
+                    else:
+                        # Fallback: slice by position if we have a rendered_index from OHLC
+                        if isinstance(rendered_index, pd.DatetimeIndex):
+                            # intersect indices to preserve alignment
+                            common = x_idx.intersection(rendered_index)
+                            x_slice = common
+                            y_slice = y_ser.loc[common]
+                        else:
+                            x_slice = x_idx
+                            y_slice = y_ser
+                else:
+                    x_slice = x_idx
+                    y_slice = y_ser
+
+                if len(x_slice) == 0:
+                    continue
+
+                pen = pg.mkPen(cfg["color"], width=cfg["width"])
+                item = pg.PlotDataItem(
+                    x=x_slice.values,
+                    y=np.asarray(y_slice.values, dtype=float),
+                    pen=pen,
+                    name=cfg["name"],
+                )
+                item.setZValue(2)  # draw above candles, below markers
+                self.plot.addItem(item)
+                self._indicator_items.append(item)
+
         if self.trades is None or self.trades.empty:
-            self._update_plot_view_range(
-                pd.DataFrame()
-            )  # Pass empty to maybe reset zoom
+            self._update_plot_view_range(pd.DataFrame())
             return
 
         df = self._apply_time_filter()
@@ -621,57 +833,85 @@ class PlotTradesWindow(PlotWindow):
         buy_mask = df["type"].str.lower() == "buy"
         sell_mask = df["type"].str.lower() == "sell"
 
-        # Entries
+        # Entries (batched: single item, per-spot symbols/colors)
         if self._show_entries:
-            x_buy_entry = self._map_time(df.loc[buy_mask, "start"])
-            y_buy_entry = df.loc[buy_mask, "buyprice"].astype(float)
-            x_sell_entry = self._map_time(df.loc[sell_mask, "start"])
-            y_sell_entry = df.loc[sell_mask, "sellprice"].astype(float)
-
-            if len(x_buy_entry) > 0:
-                self._add_scatter(
-                    x_buy_entry,
-                    y_buy_entry,
-                    color=self._colors["buy"],
-                    symbol=self._entry_symbols["buy"],
-                    name="Buy Entry",
+            x_ent = df["_x_start"].astype(float).to_numpy()
+            y_ent = df["_y_entry"].astype(float).to_numpy()
+            side_ent = df["_side"].astype(str).to_numpy()
+            if x_ent.size > 0:
+                # Symbols: triangle up for buy ('t'), triangle down for sell ('t1')
+                symbols_ent = np.where(side_ent == "buy", "t1", "t")
+                # Colors by side
+                condition = (side_ent == "buy")[:, np.newaxis]
+                colors_ent = np.where(
+                    condition, self._colors["buy"], self._colors["sell"]
                 )
-            if len(x_sell_entry) > 0:
-                self._add_scatter(
-                    x_sell_entry,
-                    y_sell_entry,
-                    color=self._colors["sell"],
-                    symbol=self._entry_symbols["sell"],
-                    name="Sell Entry",
+                # Use a white pen for a visible outline
+                outline_pen = pg.mkPen((240, 240, 240), width=1)
+                pens_ent = [outline_pen] * len(x_ent)
+                brushes_ent = [pg.mkBrush(*c, 200) for c in colors_ent]
+                self._add_scatter_batch(
+                    x_ent,
+                    y_ent,
+                    symbols=symbols_ent,
+                    brushes=brushes_ent,
+                    pens=pens_ent,
+                    name="Entries",
                 )
 
-        # Exits
+        # Exits (batched: single item, ring markers via transparent brush)
         if self._show_exits:
-            x_buy_exit = self._map_time(df.loc[buy_mask, "end"])
-            y_buy_exit = df.loc[buy_mask, "sellprice"].astype(float)
-            x_sell_exit = self._map_time(df.loc[sell_mask, "end"])
-            y_sell_exit = df.loc[sell_mask, "buyprice"].astype(float)
-
-            if len(x_buy_exit) > 0:
-                self._add_scatter(
-                    x_buy_exit,
-                    y_buy_exit,
-                    color=self._colors["buy"],
-                    symbol=self._exit_symbol,
-                    name="Buy Exit",
+            x_ex = df["_x_end"].astype(float).to_numpy()
+            y_ex = df["_y_exit"].astype(float).to_numpy()
+            side_ex = df["_side"].astype(str).to_numpy()
+            if x_ex.size > 0:
+                symbols_ex = np.array(["o"] * len(x_ex))
+                # Colors by side
+                condition = (side_ex == "buy")[:, np.newaxis]
+                colors_ex = np.where(
+                    condition, self._colors["buy"], self._colors["sell"]
                 )
-            if len(x_sell_exit) > 0:
-                self._add_scatter(
-                    x_sell_exit,
-                    y_sell_exit,
-                    color=self._colors["sell"],
-                    symbol=self._exit_symbol,
-                    name="Sell Exit",
+                pens_ex = [pg.mkPen(tuple(c), width=1.8) for c in colors_ex]
+                transparent = pg.mkBrush(0, 0, 0, 0)
+                brushes_ex = [transparent] * len(x_ex)
+                self._add_scatter_batch(
+                    x_ex,
+                    y_ex,
+                    symbols=symbols_ex,
+                    brushes=brushes_ex,
+                    pens=pens_ex,
+                    name="Exits",
                 )
 
         # Dashed link lines: entry -> exit, colored by outcome (win/loss/flat)
         if self._show_links:
             self._add_trade_link_batches(df)
+
+        # Provide hover controller with current filtered arrays
+        if self._hover_controller is None:
+            try:
+                vb = self.plot.getViewBox()
+                self._hover_controller = TradeHoverController(self, self.plot, vb)
+                self._hover_controller.set_config(
+                    hover_enabled=self.hover_enabled,
+                    tooltip_enabled=self.tooltip_enabled,
+                    tooltip_delay_ms=self.tooltip_delay_ms,
+                    hover_pick_radius_px=self.hover_pick_radius_px,
+                    tooltip_fields=self.tooltip_fields,
+                )
+            except Exception:
+                self._hover_controller = None
+        if self._hover_controller is not None:
+            x_entry = df["_x_start"].astype(float).to_numpy()
+            y_entry = df["_y_entry"].astype(float).to_numpy()
+            x_exit = df["_x_end"].astype(float).to_numpy()
+            y_exit = df["_y_exit"].astype(float).to_numpy()
+            outcome = df["_outcome"].astype(str).to_numpy()
+            side = df["_side"].astype(str).to_numpy()
+            df_index = df.index.to_numpy()
+            self._hover_controller.set_data(
+                df, x_entry, y_entry, x_exit, y_exit, outcome, side, df_index
+            )
 
         # Adjust view to current filter selection
         self._update_plot_view_range(df)
@@ -698,19 +938,59 @@ class PlotTradesWindow(PlotWindow):
         self.plot.addItem(item)
         self._layers.append(item)
 
+    def _add_scatter_batch(
+        self,
+        x,
+        y,
+        *,
+        symbols=None,
+        brushes=None,
+        pens=None,
+        name: str = "",
+        size: Optional[int] = None,
+    ) -> None:
+        """
+        Add a single ScatterPlotItem with per-spot customization.
+        - x, y: sequences
+        - symbols: sequence of per-spot symbols (or single symbol)
+        - brushes: sequence of pg.Brush or color tuples per spot
+        - pens: sequence of pg.Pen or color tuples per spot
+        - name: legend name
+        - size: marker size (if None uses self.marker_size)
+        """
+        if x is None:
+            return
+        x_list = list(x)
+        if len(x_list) == 0:
+            return
+        y_list = list(y)
+        if size is None:
+            size = self.marker_size
+        item = pg.ScatterPlotItem()
+        kwargs = {
+            "x": x_list,
+            "y": y_list,
+            "size": size,
+            "name": name,
+        }
+        if symbols is not None:
+            kwargs["symbol"] = list(symbols)
+        if brushes is not None:
+            kwargs["brush"] = list(brushes)
+        if pens is not None:
+            kwargs["pen"] = list(pens)
+        item.setData(**kwargs)
+        self.plot.addItem(item)
+        self._layers.append(item)
+
     def _add_trade_link_batches(self, df: pd.DataFrame) -> None:
         """
-        Draw dashed link lines from entry to exit using batched segments per outcome.
-        Each outcome (win/loss/flat) is a single PlotDataItem with NaN-separated segments.
+        Draw dashed link lines from entry to exit using a single QGraphicsPathItem per outcome.
+        This reduces item count and allows cosmetic dashed pens for clarity at all zoom levels.
         """
         if df is None or df.empty:
             return
 
-        outcome_names = {
-            "win": "Links (Win)",
-            "loss": "Links (Loss)",
-            "flat": "Links (Flat)",
-        }
         for outcome in ("win", "loss", "flat"):
             mask = df["_outcome"] == outcome
             if not mask.any():
@@ -721,20 +1001,25 @@ class PlotTradesWindow(PlotWindow):
             y_entry = df.loc[mask, "_y_entry"].astype(float).to_numpy()
             y_exit = df.loc[mask, "_y_exit"].astype(float).to_numpy()
 
-            n = len(x_start)
-            # Build NaN-separated segments: [x1, x2, nan, x3, x4, nan, ...]
-            x = np.empty(n * 3, dtype=float)
-            y = np.empty(n * 3, dtype=float)
-            x[0::3] = x_start
-            x[1::3] = x_end
-            x[2::3] = np.nan
-            y[0::3] = y_entry
-            y[1::3] = y_exit
-            y[2::3] = np.nan
+            if x_start.size == 0:
+                continue
 
-            color = self._outcome_colors.get(outcome, (160, 160, 160))
-            pen = pg.mkPen((*color, 200), width=1.8, style=QtCore.Qt.DashLine)
-            item = pg.PlotDataItem(x, y, pen=pen, name=outcome_names[outcome])
+            path = QPainterPath()
+            # Build many small segments via moveTo/lineTo
+            path.moveTo(float(x_start[0]), float(y_entry[0]))
+            path.lineTo(float(x_end[0]), float(y_exit[0]))
+            for i in range(1, len(x_start)):
+                path.moveTo(float(x_start[i]), float(y_entry[i]))
+                path.lineTo(float(x_end[i]), float(y_exit[i]))
+
+            item = QGraphicsPathItem(path)
+            r, g, b = self._outcome_colors.get(outcome, (160, 160, 160))
+            pen = QPen(QColor(r, g, b, 200))
+            pen.setCosmetic(True)
+            pen.setWidthF(1.8)
+            pen.setStyle(QtCore.Qt.DashLine)
+            item.setPen(pen)
+            item.setZValue(-1)  # behind markers
             self.plot.addItem(item)
             self._layers.append(item)
 
@@ -747,6 +1032,397 @@ class PlotTradesWindow(PlotWindow):
             )
 
 
+class TradeHoverController:
+    """Lightweight controller to manage hover overlay (markers + link) and tooltip.
+
+    Keeps batched items untouched and updates a tiny overlay when hovering near
+    an entry/exit marker or the connecting segment.
+    """
+
+    def __init__(
+        self,
+        plot_window: "PlotTradesWindow",
+        plot_item: pg.PlotItem,
+        view_box: pg.ViewBox,
+    ) -> None:
+        self.win = plot_window
+        self.plot = plot_item
+        self.vb = view_box
+
+        # Config
+        self.hover_enabled: bool = True
+        self.tooltip_enabled: bool = True
+        self.tooltip_delay_ms: int = 180
+        self.hover_pick_radius_px: int = 12
+        self.tooltip_fields: list[str] = []
+
+        # Data
+        self.df: Optional[pd.DataFrame] = None
+        self.xe: Optional[np.ndarray] = None
+        self.ye: Optional[np.ndarray] = None
+        self.xx: Optional[np.ndarray] = None
+        self.yx: Optional[np.ndarray] = None
+        self.side: Optional[np.ndarray] = None
+        self.outcome: Optional[np.ndarray] = None
+        self.df_index: Optional[np.ndarray] = None
+
+        # Overlay items
+        self.marker_item = pg.ScatterPlotItem()
+        self.marker_item.setZValue(6)
+        self.marker_item.setVisible(False)
+        self.link_item = QGraphicsPathItem()
+        link_pen = QPen(QColor(200, 200, 200, 230))
+        link_pen.setCosmetic(True)
+        link_pen.setWidthF(2.4)
+        self.link_item.setPen(link_pen)
+        self.link_item.setZValue(5)
+        self.link_item.setVisible(False)
+        self.tooltip_item = pg.TextItem(anchor=(0, 1))
+        self.tooltip_item.setZValue(7)
+        self.tooltip_item.setVisible(False)
+
+        # Add to scene
+        self.plot.addItem(self.link_item)
+        self.plot.addItem(self.marker_item)
+        self.plot.addItem(self.tooltip_item)
+
+        # State
+        self._current_i: Optional[int] = None
+        self._last_scene_pos: Optional[QtCore.QPointF] = None
+
+        # Debounce for mouse move
+        self._debounce = QtCore.QTimer()
+        self._debounce.setSingleShot(True)
+        self._debounce.setInterval(20)
+        self._debounce.timeout.connect(self._on_debounce_timeout)
+
+        # Tooltip delay timer
+        self._tip_timer = QtCore.QTimer()
+        self._tip_timer.setSingleShot(True)
+        self._tip_timer.timeout.connect(self._show_tooltip_now)
+
+        # Signals
+        try:
+            self.plot.scene().sigMouseMoved.connect(self._on_mouse_moved)
+        except Exception:
+            pass
+
+    # Public API
+    def set_config(
+        self,
+        *,
+        hover_enabled: bool,
+        tooltip_enabled: bool,
+        tooltip_delay_ms: int,
+        hover_pick_radius_px: int,
+        tooltip_fields: list[str],
+    ) -> None:
+        self.hover_enabled = bool(hover_enabled)
+        self.tooltip_enabled = bool(tooltip_enabled)
+        self.tooltip_delay_ms = int(tooltip_delay_ms)
+        self.hover_pick_radius_px = int(hover_pick_radius_px)
+        self.tooltip_fields = list(tooltip_fields) if tooltip_fields else []
+        if not self.hover_enabled:
+            self.clear_hover()
+        if not self.tooltip_enabled:
+            self.hide_tooltip()
+
+    def set_data(
+        self,
+        df: pd.DataFrame,
+        x_entry: np.ndarray,
+        y_entry: np.ndarray,
+        x_exit: np.ndarray,
+        y_exit: np.ndarray,
+        outcome: np.ndarray,
+        side: np.ndarray,
+        df_index: np.ndarray,
+    ) -> None:
+        self.df = df
+        self.xe = x_entry
+        self.ye = y_entry
+        self.xx = x_exit
+        self.yx = y_exit
+        self.outcome = outcome
+        self.side = side
+        self.df_index = df_index
+        # Reset current hover when data is refreshed
+        self.clear_hover()
+
+    def clear_hover(self) -> None:
+        self._current_i = None
+        self.marker_item.setVisible(False)
+        self.link_item.setVisible(False)
+        self.hide_tooltip()
+
+    def hide_tooltip(self) -> None:
+        self._tip_timer.stop()
+        self.tooltip_item.setVisible(False)
+
+    def destroy(self) -> None:
+        try:
+            self.plot.scene().sigMouseMoved.disconnect(self._on_mouse_moved)
+        except Exception:
+            pass
+        # Do not remove items; they belong to the plot scene
+
+    # Internal handlers
+    def _on_mouse_moved(self, pos: QtCore.QPointF) -> None:
+        if (
+            not self.hover_enabled
+            or self.df is None
+            or self.xe is None
+            or len(self.xe) == 0
+        ):
+            self.clear_hover()
+            return
+        self._last_scene_pos = pos
+        # Debounce
+        self._debounce.start()
+
+    def _on_debounce_timeout(self) -> None:
+        if self._last_scene_pos is None:
+            return
+        scene_pos = self._last_scene_pos
+        idx = self._hit_test(scene_pos)
+        self._update_hover(idx, scene_pos)
+
+    # Hit testing in pixel space
+    def _hit_test(self, scene_pos: QtCore.QPointF) -> Optional[int]:
+        if self.xe is None or self.xx is None:
+            return None
+        radius = float(self.hover_pick_radius_px)
+        best_i = None
+        best_d = 1e18
+        # Check markers first
+        for i in range(len(self.xe)):
+            p_ent_scene = self.vb.mapViewToScene(
+                QtCore.QPointF(float(self.xe[i]), float(self.ye[i]))
+            )
+            p_ex_scene = self.vb.mapViewToScene(
+                QtCore.QPointF(float(self.xx[i]), float(self.yx[i]))
+            )
+            de = math.hypot(
+                p_ent_scene.x() - scene_pos.x(), p_ent_scene.y() - scene_pos.y()
+            )
+            dx = math.hypot(
+                p_ex_scene.x() - scene_pos.x(), p_ex_scene.y() - scene_pos.y()
+            )
+            dmin = de if de < dx else dx
+            if dmin < best_d:
+                best_d = dmin
+                best_i = i
+        if best_i is not None and best_d <= radius:
+            return int(best_i)
+        # Else check segment proximity
+        best_i2 = None
+        best_d2 = 1e18
+        for i in range(len(self.xe)):
+            p0 = self.vb.mapViewToScene(
+                QtCore.QPointF(float(self.xe[i]), float(self.ye[i]))
+            )
+            p1 = self.vb.mapViewToScene(
+                QtCore.QPointF(float(self.xx[i]), float(self.yx[i]))
+            )
+            d = self._distance_point_to_segment(scene_pos, p0, p1)
+            if d < best_d2:
+                best_d2 = d
+                best_i2 = i
+        if best_i2 is not None and best_d2 <= radius:
+            return int(best_i2)
+        return None
+
+    @staticmethod
+    def _distance_point_to_segment(
+        p: QtCore.QPointF, a: QtCore.QPointF, b: QtCore.QPointF
+    ) -> float:
+        ax, ay, bx, by, px, py = a.x(), a.y(), b.x(), b.y(), p.x(), p.y()
+        abx, aby = bx - ax, by - ay
+        apx, apy = px - ax, py - ay
+        ab2 = abx * abx + aby * aby
+        if ab2 == 0:
+            return math.hypot(apx, apy)
+        t = max(0.0, min(1.0, (apx * abx + apy * aby) / ab2))
+        cx, cy = ax + t * abx, ay + t * aby
+        return math.hypot(px - cx, py - cy)
+
+    def _update_hover(self, idx: Optional[int], scene_pos: QtCore.QPointF) -> None:
+        if idx is None:
+            if self._current_i is not None:
+                self.clear_hover()
+            return
+        if idx == self._current_i and self.marker_item.isVisible():
+            # Update tooltip position to follow cursor
+            if self.tooltip_item.isVisible():
+                self._position_tooltip(scene_pos)
+            return
+        self._current_i = idx
+        # Update overlay geometry and styles
+        xe = float(self.xe[idx])
+        ye = float(self.ye[idx])
+        xx = float(self.xx[idx])
+        yx = float(self.yx[idx])
+        side = str(self.side[idx]) if self.side is not None else "buy"
+        outcome = str(self.outcome[idx]) if self.outcome is not None else "flat"
+
+        # Marker styles
+        base_size = self.win.marker_size
+        hover_size = int(round(base_size * 1.35))
+        halo_pen = pg.mkPen(QColor(245, 247, 255, 220), width=2)
+        buy_color = QColor(46, 221, 168, int(0.85 * 255))
+        sell_color = QColor(255, 107, 107, int(0.15 * 255))
+        entry_brush = pg.mkBrush(buy_color if side == "buy" else sell_color)
+        exit_brush = pg.mkBrush(0, 0, 0, 0)  # ring
+        entry_symbol = "t" if side == "buy" else "t1"
+        exit_symbol = "o"
+        exit_pen = pg.mkPen(
+            (255, 107, 107) if side == "sell" else (46, 221, 168), width=2
+        )
+
+        self.marker_item.setData(
+            x=[xe, xx],
+            y=[ye, yx],
+            symbol=[entry_symbol, exit_symbol],
+            size=[hover_size, hover_size],
+            pen=[halo_pen, exit_pen],
+            brush=[entry_brush, exit_brush],
+        )
+        self.marker_item.setVisible(True)
+
+        # Link path
+        path = QPainterPath()
+        path.moveTo(xe, ye)
+        path.lineTo(xx, yx)
+        self.link_item.setPath(path)
+        lr, lg, lb = self._outcome_color(outcome)
+        link_pen = QPen(QColor(lr, lg, lb, 235))
+        link_pen.setCosmetic(True)
+        link_pen.setWidthF(2.4)
+        self.link_item.setPen(link_pen)
+        self.link_item.setVisible(True)
+
+        # Tooltip scheduling
+        self.hide_tooltip()
+        if self.tooltip_enabled:
+            self._tip_timer.setInterval(max(0, int(self.tooltip_delay_ms)))
+            self._pending_tip_scene_pos = scene_pos
+            self._tip_timer.start()
+
+    def _show_tooltip_now(self) -> None:
+        if self._current_i is None or not self.tooltip_enabled:
+            return
+        idx = self._current_i
+        html = self._build_tooltip_html(idx)
+        self.tooltip_item.setHtml(html)
+        self.tooltip_item.setVisible(True)
+        # Position near cursor
+        pos = getattr(self, "_pending_tip_scene_pos", None)
+        if pos is not None:
+            self._position_tooltip(pos)
+
+    def _position_tooltip(self, scene_pos: QtCore.QPointF) -> None:
+        view_pos = self.vb.mapSceneToView(scene_pos)
+        # Offset by pixels converted to data units
+        try:
+            # pyqtgraph ViewBox: viewPixelSize returns QPointF with data units per pixel
+            dps = self.vb.viewPixelSize()
+            dx = float(dps.x()) * 16.0
+            dy = -float(dps.y()) * 12.0
+        except Exception:
+            dx, dy = 0, 0
+        self.tooltip_item.setPos(view_pos.x() + dx, view_pos.y() + dy)
+
+    def _outcome_color(self, outcome: str) -> tuple[int, int, int]:
+        oc = {
+            "win": (53, 196, 106),
+            "loss": (225, 90, 90),
+            "flat": (158, 158, 158),
+        }
+        return oc.get(outcome, (158, 158, 158))
+
+    def _build_tooltip_html(self, i: int) -> str:
+        # Pull values from df using df_index mapping
+        try:
+            row_label = self.df_index[i]
+            row = self.df.loc[row_label]
+        except Exception:
+            row = None
+
+        def fmt_ts(ts: pd.Timestamp) -> str:
+            if pd.isna(ts):
+                return "–"
+            ts = pd.to_datetime(ts)
+            return ts.strftime("%Y-%m-%d %H:%M")
+
+        def fmt_num(v: float, decimals: int = 2) -> str:
+            if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
+                return "–"
+            try:
+                return f"{float(v):.{decimals}f}"
+            except Exception:
+                return str(v)
+
+        def fmt_signed(v: Optional[float]) -> str:
+            if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
+                return "–"
+            return ("+" if float(v) >= 0 else "") + fmt_num(float(v))
+
+        def safe_get(r, key, default=None):
+            try:
+                val = r[key]
+                if pd.isna(val):
+                    return default
+                return val
+            except Exception:
+                return default
+
+        start = safe_get(row, "start", None) if row is not None else None
+        end = safe_get(row, "end", None) if row is not None else None
+        amount = safe_get(row, "amount", None) if row is not None else None
+        side = str(self.side[i]).capitalize() if self.side is not None else ""
+        outcome = str(self.outcome[i]).capitalize() if self.outcome is not None else ""
+        # entry/exit price from precomputed arrays
+        entry_price = self.ye[i]
+        exit_price = self.yx[i]
+        # profit or delta
+        prof = safe_get(row, "profit", None) if row is not None else None
+        delt = safe_get(row, "delta", None) if row is not None else None
+        if prof is None:
+            prof = delt
+        pl_text = (
+            fmt_signed(prof)
+            if prof is not None
+            else fmt_signed((exit_price - entry_price))
+        )
+        duration = None
+        try:
+            if start is not None and end is not None:
+                duration = pd.to_datetime(end) - pd.to_datetime(start)
+        except Exception:
+            duration = None
+
+        def fmt_dur(td: Optional[pd.Timedelta]) -> str:
+            if td is None or pd.isna(td):
+                return "–"
+            seconds = int(td.total_seconds())
+            hh = seconds // 3600
+            mm = (seconds % 3600) // 60
+            ss = seconds % 60
+            return f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+        html = [
+            f"<div style='background-color:#20222A; color:#eaeaf1; padding:8px 10px; border:1px solid #3A3D47; border-radius:6px;'>",
+            f"<div style='font-weight:bold;margin-bottom:6px;'>{side} — {outcome}</div>",
+            f"<div>Entry: <span style='color:#a7a7b3'>{fmt_ts(start)}</span> | {fmt_num(entry_price, 4)}</div>",
+            f"<div>Exit:  <span style='color:#a7a7b3'>{fmt_ts(end)}</span> | {fmt_num(exit_price, 4)}</div>",
+            f"<div>Amount: {fmt_num(amount, 2)}</div>",
+            f"<div>P/L: <span style='color:{'#35C46A' if (prof is not None and float(prof) >= 0) else '#E15A5A'}'>{pl_text}</span></div>",
+            f"<div>Duration: {fmt_dur(duration)}</div>",
+            "</div>",
+        ]
+        return "".join(html)
+
+
 # --- Orchestration helpers colocated with PlotTradesWindow ---
 
 
@@ -754,9 +1430,10 @@ def create_candlestick_with_trades(
     ohlc_data: pd.DataFrame,
     trades_df: pd.DataFrame,
     *,
+    indicators: Optional[list[IndicatorConfig]] = None,
     time_mode: Literal["auto", "datetime", "bars"] = "auto",
     time_col: str = "time",
-    marker_size: int = 10,
+    marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
 ) -> PlotTradesWindow:
     """
     Create a PlotTradesWindow, add candlesticks, align, and render trade markers.
@@ -776,7 +1453,7 @@ def create_candlestick_with_trades(
     # This now calls the overridden method in PlotTradesWindow
     window.add_candlestick_plot(ohlc_data)
 
-    # Choose alignment mode
+    # Choose alignment mode first, so the time mapper is ready
     if time_mode == "datetime":
         window.use_datetime_axis()
     elif time_mode == "bars":
@@ -790,7 +1467,21 @@ def create_candlestick_with_trades(
         else:
             window.use_datetime_axis()
 
+    # Set trades, which triggers the primary render of candles and trade markers
     window.set_trades(trades_df)
+
+    # Now, with the primary plot established, register indicators so they are filter-aware
+    if indicators:
+        for config in indicators:
+            if config.type == "line":
+                window.add_indicator_line(
+                    x=ohlc_data.index,
+                    y=config.y,
+                    name=config.name,
+                    color=config.color,
+                    width=config.width,
+                )
+
     return window
 
 
@@ -799,9 +1490,10 @@ def show_candlestick_with_trades(
     trades_df: pd.DataFrame,
     *,
     title: str = "Candlestick + Trades",
+    indicators: Optional[list[IndicatorConfig]] = None,
     time_mode: Literal["auto", "datetime", "bars"] = "auto",
     time_col: str = "time",
-    marker_size: int = 10,
+    marker_size: int = DEFAULT_TRADE_MARKER_SIZE,
     block: Optional[bool] = None,
 ) -> PlotTradesWindow:
     """
@@ -828,6 +1520,7 @@ def show_candlestick_with_trades(
     window = create_candlestick_with_trades(
         ohlc_data=ohlc_data,
         trades_df=trades_df,
+        indicators=indicators,
         time_mode=time_mode,
         time_col=time_col,
         marker_size=marker_size,

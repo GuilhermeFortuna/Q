@@ -1,8 +1,6 @@
 import optuna
-from typing import Type, Dict, Any, Union
-from optuna.storages import BaseStorage
-from src.backtester.data import CandleData
-from src.backtester.engine import Engine, BacktestParameters
+from typing import Type, Dict, Any
+from src.backtester.engine import Engine
 from src.backtester.strategy import TradingStrategy
 
 
@@ -16,9 +14,6 @@ class Optimizer:
         strategy_class: Type[TradingStrategy],
         config: Dict[str, Any],
         backtest_settings: Dict[str, Any],
-        candle_data: CandleData,
-        study_name: str,
-        storage: Union[str, BaseStorage],
     ):
         """
         Initializes the Optimizer.
@@ -28,27 +23,17 @@ class Optimizer:
             config: A dictionary containing optimization parameters, including:
                     - 'parameters': A dictionary defining the parameter space for Optuna.
                     - 'n_trials': The number of optimization trials to run.
-                    - 'metric': The performance metric to optimize (e.g., 'net_profit').
+                    - 'metric': The performance metric to optimize (e.g., 'total_profit').
                     - 'direction': The optimization direction ('maximize' or 'minimize').
             backtest_settings: A dictionary with settings for the backtester engine.
-            candle_data: The candle data to be used for the backtests.
-            study_name: The name of the study for persistence.
-            storage: The storage backend, either a URL string or a storage object.
         """
         self.strategy_class = strategy_class
         self.config = config
         self.backtest_settings = backtest_settings
-        self.candle_data = candle_data
-        self.study_name = study_name
-        self.storage = storage
         self.param_space = self.config['parameters']
         self.n_trials = self.config.get('n_trials', 100)
-        self.metric = self.config.get('metric', 'net_profit')
+        self.metric = self.config.get('metric', 'total_profit')
         self.direction = self.config.get('direction', 'maximize')
-        self.backtest_params = BacktestParameters(
-            **self.backtest_settings.get('parameters', {})
-        )
-        self.strategy_base_params = self.backtest_settings.get('strategy_params', {})
 
     def _objective(self, trial: optuna.trial.Trial) -> float:
         """
@@ -57,23 +42,20 @@ class Optimizer:
         # Suggest parameters for the strategy for the current trial
         strategy_params = self._suggest_params(trial)
 
-        # Combine with base params from backtest_settings
-        all_strategy_params = {**self.strategy_base_params, **strategy_params}
-
         # Instantiate the strategy with the suggested parameters
-        strategy_instance = self.strategy_class(**all_strategy_params)
+        strategy_instance = self.strategy_class(**strategy_params)
 
-        engine = Engine(
-            parameters=self.backtest_params,
-            strategy=strategy_instance,
-            data={'candle': self.candle_data},
-        )
+        # Assumption: The backtester.engine.Engine is initialized with a strategy
+        # instance and backtest settings.
+        engine = Engine(strategy_instance, **self.backtest_settings)
 
-        registry = engine.run_backtest(display_progress=False)
-        summary = registry.get_result()
+        # Assumption: The run() method executes the backtest and returns a
+        # registry object that holds the results.
+        registry = engine.run()
 
-        if summary is None:
-            return -1e9  # Return a very low value if backtest fails
+        # Assumption: The registry object has a method (e.g., get_summary())
+        # that returns a dictionary with performance metrics.
+        summary = registry.get_summary()
 
         return summary.get(self.metric, 0.0)
 
@@ -100,16 +82,15 @@ class Optimizer:
         """
         Runs the optimization study and returns the study object.
         """
-        study = optuna.create_study(
-            study_name=self.study_name,
-            storage=self.storage,
-            load_if_exists=True,
-            direction=self.direction,
-        )
+        study = optuna.create_study(direction=self.direction)
         study.optimize(self._objective, n_trials=self.n_trials, show_progress_bar=True)
 
         print("\nOptimization Finished.")
-        print(f"Study: {self.study_name}")
         print("Best trial:")
         trial = study.best_trial
         print(f"  Value ({self.metric}): {trial.value}")
+        print("  Params: ")
+        for key, value in trial.params.items():
+            print(f"    {key}: {value}")
+
+        return study

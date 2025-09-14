@@ -36,7 +36,14 @@ class BacktestResultModel:
             self._result = result or {}
             self._trades_df = trades_df
 
-        self._ohlc_df = ohlc_df
+        # Store OHLC data with proper validation
+        if ohlc_df is not None:
+            if isinstance(ohlc_df, pd.DataFrame) and not ohlc_df.empty:
+                self.ohlc_df = ohlc_df
+            else:
+                self.ohlc_df = None
+        else:
+            self.ohlc_df = None
 
         # Normalize and validate data
         self._normalize_data()
@@ -82,7 +89,9 @@ class BacktestResultModel:
             numeric_cols = ['buyprice', 'sellprice', 'amount', 'profit']
             for col in numeric_cols:
                 if col in self._trades_df.columns:
-                    self._trades_df[col] = pd.to_numeric(self._trades_df[col], errors='coerce')
+                    self._trades_df[col] = pd.to_numeric(
+                        self._trades_df[col], errors='coerce'
+                    )
 
     @property
     def result(self) -> Dict[str, Any]:
@@ -98,6 +107,17 @@ class BacktestResultModel:
     def ohlc_df(self) -> Optional[pd.DataFrame]:
         """Get the OHLC DataFrame."""
         return self._ohlc_df
+
+    @ohlc_df.setter
+    def ohlc_df(self, value: Optional[pd.DataFrame]) -> None:
+        """Set the OHLC DataFrame with validation."""
+        if value is not None:
+            if isinstance(value, pd.DataFrame) and not value.empty:
+                self._ohlc_df = value
+            else:
+                self._ohlc_df = None
+        else:
+            self._ohlc_df = None
 
     @property
     def balance(self) -> Optional[pd.Series]:
@@ -129,8 +149,13 @@ class BacktestResultModel:
             # Use profit column if available, otherwise calculate from prices
             if 'profit' in self._trades_df.columns:
                 profits = self._trades_df['profit'].fillna(0)
-            elif all(col in self._trades_df.columns for col in ['buyprice', 'sellprice', 'amount']):
-                profits = (self._trades_df['sellprice'] - self._trades_df['buyprice']) * self._trades_df['amount']
+            elif all(
+                col in self._trades_df.columns
+                for col in ['buyprice', 'sellprice', 'amount']
+            ):
+                profits = (
+                    self._trades_df['sellprice'] - self._trades_df['buyprice']
+                ) * self._trades_df['amount']
                 profits = profits.fillna(0)
             else:
                 return None
@@ -139,7 +164,9 @@ class BacktestResultModel:
             initial_balance = self._result.get('initial_balance', 0)
             if isinstance(initial_balance, str):
                 try:
-                    initial_balance = float(initial_balance.replace('BRL', '').replace(',', ''))
+                    initial_balance = float(
+                        initial_balance.replace('BRL', '').replace(',', '')
+                    )
                 except:
                     initial_balance = 0
 
@@ -147,7 +174,9 @@ class BacktestResultModel:
 
             # Use trade end times as index if available
             if 'end' in self._trades_df.columns:
-                return pd.Series(cumulative_balance.values, index=self._trades_df['end'])
+                return pd.Series(
+                    cumulative_balance.values, index=self._trades_df['end']
+                )
             else:
                 return cumulative_balance
 
@@ -162,7 +191,9 @@ class BacktestResultModel:
 
         try:
             # Handle NaN and infinite values
-            balance_clean = balance.replace([np.inf, -np.inf], np.nan).fillna(method='ffill')
+            balance_clean = balance.replace([np.inf, -np.inf], np.nan).fillna(
+                method='ffill'
+            )
             if balance_clean.empty:
                 return None
 
@@ -192,17 +223,27 @@ class BacktestResultModel:
                 stats = {
                     'month': str(month),
                     'num_trades': len(group),
-                    'result': group.get('profit', 0).sum() if 'profit' in group.columns else 0,
-                    'cost': group.get('cost', 0).sum() if 'cost' in group.columns else 0,
+                    'result': (
+                        group.get('profit', 0).sum() if 'profit' in group.columns else 0
+                    ),
+                    'cost': (
+                        group.get('cost', 0).sum() if 'cost' in group.columns else 0
+                    ),
                     'tax': group.get('tax', 0).sum() if 'tax' in group.columns else 0,
-                    'profit': group[group.get('profit', 0) > 0]['profit'].sum() if 'profit' in group.columns else 0,
+                    'profit': (
+                        group[group.get('profit', 0) > 0]['profit'].sum()
+                        if 'profit' in group.columns
+                        else 0
+                    ),
                 }
 
                 # Get end-of-month balance
                 if balance is not None:
                     month_end_trades = group['end'].max()
                     month_balance = balance[balance.index <= month_end_trades]
-                    stats['balance'] = month_balance.iloc[-1] if not month_balance.empty else 0
+                    stats['balance'] = (
+                        month_balance.iloc[-1] if not month_balance.empty else 0
+                    )
                 else:
                     stats['balance'] = 0
 
@@ -214,12 +255,17 @@ class BacktestResultModel:
 
     def format_value(self, key: str, value: Any) -> str:
         """Format a value for display based on its key and type."""
-        if value is None or (isinstance(value, float) and (math.isnan(value) or math.isinf(value))):
+        if value is None or (
+            isinstance(value, float) and (math.isnan(value) or math.isinf(value))
+        ):
             return "—"
 
         try:
             # Currency values
-            if any(term in key.lower() for term in ['balance', 'profit', 'loss', 'cost', 'tax', 'drawdown']):
+            if any(
+                term in key.lower()
+                for term in ['balance', 'profit', 'loss', 'cost', 'tax', 'drawdown']
+            ):
                 if isinstance(value, (int, float)):
                     return f"{value:,.2f}"
                 elif isinstance(value, str) and 'BRL' in value:
@@ -228,7 +274,11 @@ class BacktestResultModel:
                     return f"{float(value):,.2f}"
 
             # Percentage values
-            elif 'accuracy' in key.lower() or 'drawdown_relative' in key.lower() or 'drawdown_final' in key.lower():
+            elif (
+                'accuracy' in key.lower()
+                or 'drawdown_relative' in key.lower()
+                or 'drawdown_final' in key.lower()
+            ):
                 if isinstance(value, (int, float)):
                     return f"{value:.2f}%"
                 elif isinstance(value, str) and '%' in value:
@@ -257,7 +307,10 @@ class BacktestResultModel:
                     return str(value)
 
             # Integer values (trades counts)
-            elif any(term in key.lower() for term in ['trades', 'total', 'positive', 'negative']):
+            elif any(
+                term in key.lower()
+                for term in ['trades', 'total', 'positive', 'negative']
+            ):
                 return str(int(float(value)))
 
             # Duration
@@ -278,7 +331,9 @@ class BacktestResultModel:
             return str(value) if value is not None else "—"
 
 
-def compute_balance_series(trades_df: pd.DataFrame, initial_balance: float = 0) -> pd.Series:
+def compute_balance_series(
+    trades_df: pd.DataFrame, initial_balance: float = 0
+) -> pd.Series:
     """Pure function to compute balance series from trades DataFrame."""
     if trades_df is None or trades_df.empty:
         return pd.Series(dtype=float)
@@ -311,3 +366,38 @@ def compute_drawdown_series(balance: pd.Series) -> pd.Series:
     peak = balance_clean.expanding().max()
     drawdown = balance_clean - peak
     return drawdown
+
+
+from dataclasses import dataclass
+from typing import Any, Literal, Optional
+
+
+@dataclass
+class IndicatorConfig:
+    """
+    A standardized configuration object for plotting technical indicators.
+
+    This dataclass ensures that all necessary parameters are provided in a
+    structured format, improving clarity and reducing errors when defining
+    indicators for the `show_chart` function.
+
+    Attributes:
+        type (Literal['line', 'scatter', 'histogram']): The type of plot.
+        y (pd.Series | np.ndarray): The y-axis data for the indicator.
+        name (str): The name of the indicator for legends and titles.
+        x (Optional[pd.Series | np.ndarray]): The x-axis data. If None, the
+            OHLC data's index will be used. Defaults to None.
+        color (str): The color for the plot. Defaults to 'cyan'.
+        width (int): The line width (for 'line' type). Defaults to 2.
+        size (int): The marker size (for 'scatter' type). Defaults to 10.
+        symbol (str): The marker symbol (for 'scatter' type). Defaults to 'o'.
+    """
+
+    type: Literal['line', 'scatter', 'histogram']
+    y: Any
+    name: str
+    x: Optional[Any] = None
+    color: str = 'cyan'
+    width: int = 2
+    size: int = 10
+    symbol: str = 'o'
