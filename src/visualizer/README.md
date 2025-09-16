@@ -192,6 +192,3 @@ See example usage in `scripts/backtest/dol_test.py` or `scripts/backtest/ccm_tes
 ## License
 
 Part of the PyQuant trading framework workspace.
-```
-This is the complete content that accurately reflects your current visualizer package implementation. You can copy and paste this entire content to replace your existing README.md file.
-```

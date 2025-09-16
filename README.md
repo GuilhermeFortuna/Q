@@ -1,202 +1,213 @@
-# q
+# 📊 Q — Python Toolkit for Quantitative Trading
 
 A Python toolkit for quantitative trading research, featuring:
 
-- Backtester: event-driven engine for running strategies on OHLCV candles
-- Visualizer: interactive PySide6 + pyqtgraph windows for charts, trades and summaries
-- Optimizer: hyperparameter search using Optuna
-- Scripts: ready-to-run examples for data analysis and backtests
+- ⚡ **Backtester** — Event-driven engine for running strategies on OHLCV candles  
+- 📈 **Visualizer** — Interactive PySide6 + pyqtgraph windows for charts, trades, and summaries  
+- 🔍 **Optimizer** — Hyperparameter search using Optuna  
+- 📝 **Scripts** — Ready-to-run examples for data analysis and backtests  
 
-This repository is organized as a uv workspace with subpackages under `src/`.
+Organized as a **uv workspace** with subpackages under `src/`.
 
-## Requirements
+---
 
-- Python 3.10
-- Windows is recommended (MetaTrader5 data import convenience), but Linux/macOS may work for parts that do not rely on MetaTrader5
-- Optional: MetaTrader 5 (for `metatrader5` data import)
+## 📜 Table of Contents
+<details>
+<summary>Click to expand</summary>
 
-Key Python dependencies (see `pyproject.toml`):
-- pandas, numpy, pandas-ta (vendored), tqdm
-- PySide6, pyqtgraph
-- Flask (for potential dashboards/services)
-- Optuna (optimization)
-- MetaTrader5 (data acquisition)
+- [⚙️ Requirements](#️-requirements)
+- [📦 Installation](#-installation)
+- [📂 Project Structure](#-project-structure)
+- [🚀 Quickstart](#-quickstart)
+  - [Example 1 — Backtest DOL$ (5m) with visualization](#example-1--backtest-dol-5m-with-visualization)
+  - [Example 2 — Backtest CCM with visualization](#example-2--backtest-ccm-with-visualization)
+  - [Example 3 — Plot candlestick with indicators](#example-3--plot-candlestick-with-indicators)
+  - [Example 4 — Run composite strategy (Momentum Rider)](#example-4--run-composite-strategy-momentum-rider)
+- [🐍 Programmatic Usage](#-programmatic-usage)
+  - [Backtest with summary](#backtest-with-summary)
+  - [Candlestick + EMA](#candlestick--ema)
+  - [Composite Strategy](#composite-strategy)
+- [📑 Data Notes](#-data-notes)
+- [🛠️ Development](#️-development)
 
-## Installation
+</details>
 
-The project uses `uv` workspaces (see `uv.lock` and `pyproject.toml`). You can use either uv or pip.
+---
 
-Using uv (recommended):
+## ⚙️ Requirements
 
-1) Install uv if you don’t have it yet: https://docs.astral.sh/uv/
-2) From the project root:
+- **Python**: `3.10`  
+- **OS**: Windows (recommended for MetaTrader5 data import). Linux/macOS may work if not using MetaTrader5.  
+- **Optional**: MetaTrader 5 terminal (for `metatrader5` data import).  
 
-```
+**Key dependencies** (see `pyproject.toml`):  
+- pandas, numpy, tqdm, pandas-ta (vendored)  
+- PySide6, pyqtgraph  
+- Flask (dashboards/services)  
+- Optuna (optimization)  
+- MetaTrader5 (data acquisition)  
+
+---
+
+## 📦 Installation
+
+This project uses `uv` workspaces (`uv.lock`, `pyproject.toml`). You can install with **uv (recommended)** or **pip**.
+
+### Using uv
+```bash
+# Install uv if needed → https://docs.astral.sh/uv/
 uv sync
 ```
 
-Using pip (editable):
-
-```
+### Using pip (editable)
+```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
 ```
 
-Notes:
-- Python 3.10 is required (see `requires-python ==3.10.*` in pyproject).
-- If you intend to import data from MetaTrader5, ensure the MetaTrader 5 terminal is installed and logged in, and the `metatrader5` Python package can connect.
+🔑 Notes:
+- Python 3.10 required (`requires-python ==3.10.*`).  
+- For MetaTrader5: ensure the terminal is installed, logged in, and accessible to the `metatrader5` package.  
 
-## Project Structure
+---
 
-```
+## 📂 Project Structure
+
+```plaintext
 src/
-  backtester/    # Core backtesting engine, data abstractions, trades and results
+  backtester/    # Core engine, data abstractions, trades, results
   bridge/        # Data management and inter-component communication
-  visualizer/    # Interactive plotting windows and summary UIs
+  visualizer/    # Interactive plotting windows and UIs
   optimizer/     # Optuna-based optimization components
-  strategies/    # Example strategies (daytrade/swingtrade)
+  strategies/
+    signals/       # Modular signals (RSI, ADX/DMI, Supertrend, Donchian, etc.)
+    composite.py   # CompositeStrategy for aggregating signals
+    combiners.py   # Gated/thresholded/weighted combiners
+    archetypes.py  # Prebuilt factories (Momentum Rider, Range Fader, Volatility Breakout)
 vendors/
-  pandas_ta/     # Vendored pandas-ta for technical indicators
+  pandas_ta/     # Vendored pandas-ta
 scripts/
-  backtest/      # Example backtest scripts
-  analysis/      # Analysis/plotting scripts
-  optimization/  # Optimization utilities and examples
-  playground/    # Development and testing scripts
-docs/            # Notes and implementation docs for visualizer
-pyproject.toml   # Project metadata and dependencies
+  backtest/      # Example backtests
+    composites/    # Composite backtests (momentum_rider_test.py, etc.)
+  analysis/      # Analysis & plotting scripts
+  optimization/  # Optimization utilities
+  playground/    # Sandbox & dev scripts
+docs/            # Notes & visualizer docs
+pyproject.toml   # Project metadata & dependencies
 uv.lock          # uv lockfile
 ```
 
-## Quickstart
+---
 
-Below are working examples you can run after installing dependencies. These scripts demonstrate importing data, running a simple moving average crossover strategy, and visualizing results.
+## 🚀 Quickstart
 
-### Example 1: Backtest DOL$ (5m) with visualization
+Try these scripts after installation.
 
-File: `scripts\backtest\dol_test.py`
-
-What it does:
-- Imports OHLCV data from MetaTrader5 for `DOL$` 5-minute bars (last 90 days by default)
-- Runs a MA crossover strategy
-- Launches an interactive backtest summary window (PySide6 + pyqtgraph)
-
-Run:
-
-```
+### Example 1 — Backtest DOL$ (5m) with visualization
+```bash
 python scripts\backtest\dol_test.py
 ```
+- Imports OHLCV from MetaTrader5 (last 90 days).  
+- Runs an MA crossover strategy.  
+- Launches an interactive summary window.  
 
-If you don’t have MetaTrader5 data available, adapt the script to load your own DataFrame (columns: open, high, low, close, volume; index as datetime) into `CandleData`.
-
-### Example 2: Backtest CCM with visualization
-
-File: `scripts\backtest\ccm_test.py`
-
-This example configures a different instrument (CCM) and parameters, then displays the backtest summary:
-
-```
+### Example 2 — Backtest CCM with visualization
+```bash
 python scripts\backtest\ccm_test.py
 ```
 
-### Example 3: Plot candlestick with indicators
-
-File: `scripts\analysis\plot_candlestick_with_indicators.py`
-
-Demonstrates computing an EMA(9) with pandas-ta and plotting it on a candlestick chart via the Visualizer API.
-
-Run:
-
-```
+### Example 3 — Plot candlestick with indicators
+```bash
 python scripts\analysis\plot_candlestick_with_indicators.py
 ```
 
-## Programmatic Usage
+### Example 4 — Run composite strategy (Momentum Rider)
+```bash
+python scripts\backtest\composites\momentum_rider_test.py
+```
 
-Example: Run MA crossover backtest and show summary in one script:
+---
 
+## 🐍 Programmatic Usage
+
+### Backtest with summary
 ```python
 from src.backtester.data import CandleData
 from src.backtester.engine import BacktestParameters, Engine
 from src.strategies.swingtrade import MaCrossover
 from src.visualizer import show_backtest_summary
 
-# Prepare data (replace with your own loader if not using MT5)
 candles = CandleData(symbol="DOL$", timeframe="5min")
-# candles.data = <your DataFrame with columns open, high, low, close, volume and datetime index>
-
-# Configure and run backtest
 params = BacktestParameters(point_value=10.0, cost_per_trade=2.50)
-strategy = MaCrossover(
-    tick_value=0.5,
-    short_ma_func="ema",
-    short_ma_period=9,
-    long_ma_func="sma",
-    long_ma_period=12,
-    delta_tick_factor=1,
-    always_active=True,
-)
-engine = Engine(parameters=params, strategy=strategy, data=dict(candle=candles))
-trade_registry = engine.run_backtest(display_progress=True)
-result = trade_registry.get_result()
+strategy = MaCrossover(short_ma_func="ema", short_ma_period=9,
+                       long_ma_func="sma", long_ma_period=12,
+                       tick_value=0.5, delta_tick_factor=1,
+                       always_active=True)
 
-# Show interactive summary
+engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
+registry = engine.run_backtest(display_progress=True)
+result = registry.get_result()
 if result is not None:
-    ohlc_df = candles.data.copy()
-    if 'time' not in ohlc_df.columns:
-        ohlc_df.insert(0, 'time', list(range(len(ohlc_df))))
-    show_backtest_summary(trade_registry, ohlc_df=ohlc_df)
+    show_backtest_summary(registry, ohlc_df=candles.data.copy())
 ```
 
-Example: Plot a candlestick chart with an EMA indicator:
-
+### Candlestick + EMA
 ```python
-import pandas as pd
-import pandas_ta as pta
+import pandas as pd, pandas_ta as pta
 from src.visualizer.windows import show_chart, IndicatorConfig
 
-# Minimal OHLC sample DataFrame; replace with your own OHLCV data
-ohlc = pd.DataFrame(
-    {
-        "open": [1.0, 1.5, 1.2, 1.8],
-        "high": [1.6, 1.7, 1.9, 2.1],
-        "low": [0.9, 1.1, 1.0, 1.5],
-        "close": [1.4, 1.3, 1.8, 2.0],
-        "volume": [100, 150, 120, 200],
-    }
-)
-
-# Compute indicator and plot
+ohlc = pd.DataFrame({...})  # Your OHLCV data
 ohlc['ema9'] = pta.ema(ohlc['close'], length=9)
-indicators = [
-    IndicatorConfig(type='line', y=ohlc['ema9'], name='EMA(9)', color='blue'),
-]
-show_chart(ohlc_data=ohlc, indicators=indicators, show_volume=True, initial_candles=100)
+
+show_chart(ohlc_data=ohlc,
+           indicators=[IndicatorConfig(type='line', y=ohlc['ema9'], name='EMA(9)', color='blue')],
+           show_volume=True, initial_candles=100)
 ```
 
-## Data Notes
+### Composite Strategy
+```python
+from src.backtester.engine import BacktestParameters, Engine
+from src.backtester.data import CandleData
+from src.strategies.archetypes import create_momentum_rider_strategy
 
-- MetaTrader5: The example scripts assume access to MT5 symbols like `DOL$`/`CCM$`. Replace with your broker/symbol names as needed. Ensure terminal is installed and logged in.
-- Custom data: If you have CSV/Parquet data, construct a DataFrame (columns: open, high, low, close, volume) with a datetime index and assign it to `CandleData.data`.
+candles = CandleData(symbol="WDO", timeframe="15min")
+params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+strategy = create_momentum_rider_strategy()
 
-## Development
-
-- Code style: `black` (configured in `pyproject.toml` with line length 88)
-- Workspace: `uv` manages `src/backtester`, `src/visualizer`, and `src/optimizer` as members
-- Vendored packages: pandas-ta is included under `vendors/pandas_ta`
-
-Recommended workflow with uv:
-
+engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
+registry = engine.run_backtest(display_progress=True)
+print(registry.trades[["type", "entry_info", "exit_info"]].head())
 ```
+
+---
+
+## 📑 Data Notes
+- **MetaTrader5**: Example scripts assume symbols like `DOL$`, `CCM$`. Adapt as needed.  
+- **Custom Data**: Use CSV/Parquet with `open, high, low, close, volume` + datetime index → assign to `CandleData.data`.  
+
+---
+
+## 🛠️ Development
+
+- Style: `black` (line length 88, see `pyproject.toml`).  
+- Workspace: `uv` manages `src/backtester`, `src/visualizer`, `src/optimizer`.  
+- Vendored: pandas-ta included under `vendors/pandas_ta`.  
+
+### Workflow with uv
+```bash
 uv sync
 uv run python scripts\backtest\dol_test.py
 ```
 
-Or with a virtual environment:
-
-```
+### Or with venv
+```bash
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e .
 python scripts\backtest\dol_test.py
 ```
+
+---
+
+✅ This README now has a collapsible table of contents for easy navigation.
