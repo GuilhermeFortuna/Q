@@ -147,8 +147,12 @@ class ChartTooltipController:
 
         # Check histogram plots
         for plot in getattr(self.plot_window, '_indicator_plots', []):
+            # Map mouse position to the indicator plot's coordinate system
+            plot_view_box = plot.getViewBox()
+            plot_view_pos = plot_view_box.mapSceneToView(self._last_mouse_pos)
+
             hist_info = self._check_histogram_hover(
-                plot, x_pos, y_pos, x_radius, y_radius
+                plot, plot_view_pos.x(), plot_view_pos.y(), x_radius, y_radius
             )
             if hist_info and hist_info['distance'] < closest_distance:
                 closest_info = hist_info
