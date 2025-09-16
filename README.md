@@ -52,6 +52,7 @@ Notes:
 ```
 src/
   backtester/    # Core backtesting engine, data abstractions, trades and results
+  bridge/        # Data management and inter-component communication
   visualizer/    # Interactive plotting windows and summary UIs
   optimizer/     # Optuna-based optimization components
   strategies/    # Example strategies (daytrade/swingtrade)
@@ -60,7 +61,8 @@ vendors/
 scripts/
   backtest/      # Example backtest scripts
   analysis/      # Analysis/plotting scripts
-  optimization/  # (If present) optimization utilities
+  optimization/  # Optimization utilities and examples
+  playground/    # Development and testing scripts
 docs/            # Notes and implementation docs for visualizer
 pyproject.toml   # Project metadata and dependencies
 uv.lock          # uv lockfile

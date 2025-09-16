@@ -187,7 +187,7 @@ The package includes validation for:
 
 ## Examples
 
-See the main project's `test.py` for a complete example integrating the visualizer with backtest results from the backtester package.
+See example usage in `scripts/backtest/dol_test.py` or `scripts/backtest/ccm_test.py` for complete examples integrating the visualizer with backtest results from the backtester package.
 
 ## License
 
