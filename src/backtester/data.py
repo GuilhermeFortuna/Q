@@ -114,6 +114,8 @@ class CandleData(MarketData):
         date_from: dt.datetime,
         date_to: dt.datetime,
     ):
+        error_message = f'Error importing data for symbol {mt5_symbol} from MT5.: {mt5.last_error()}'
+
         # Validate timeframe
         if not isinstance(timeframe, str) or timeframe not in TIMEFRAMES.keys():
             raise ValueError(f'Invalid timeframe: {timeframe}')
@@ -132,6 +134,8 @@ class CandleData(MarketData):
             df = pd.DataFrame()
 
         finally:
+            if df.empty:
+                print(error_message)
             mt5.shutdown()
 
         return df
