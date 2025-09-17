@@ -94,10 +94,19 @@ class CompositeStrategy(TradingStrategy):
         price = float(candle.close[i])
 
         side, strength, decisions = self._aggregate(i, data)
+        # Label decisions for analysis/reporting
+        labeled = [
+            {
+                'label': sig.__class__.__name__,
+                'side': dec.side,
+                'strength': float(max(0.0, min(1.0, getattr(dec, 'strength', 0.0))))
+            }
+            for sig, dec in zip(self.signals, decisions)
+        ]
         if side == 'long':
-            return TradeOrder(type='buy', price=price, datetime=dt, amount=1)
+            return TradeOrder(type='buy', price=price, datetime=dt, amount=1, info={'decisions': labeled})
         elif side == 'short':
-            return TradeOrder(type='sell', price=price, datetime=dt, amount=1)
+            return TradeOrder(type='sell', price=price, datetime=dt, amount=1, info={'decisions': labeled})
         else:
             return None
 
@@ -107,19 +116,27 @@ class CompositeStrategy(TradingStrategy):
         price = float(candle.close[i])
 
         side, strength, decisions = self._aggregate(i, data)
+        labeled = [
+            {
+                'label': sig.__class__.__name__,
+                'side': dec.side,
+                'strength': float(max(0.0, min(1.0, getattr(dec, 'strength', 0.0))))
+            }
+            for sig, dec in zip(self.signals, decisions)
+        ]
 
         if trade_info['type'] == 'buy':
             if side == 'short':
                 if self.always_active:
-                    return TradeOrder(type='invert', price=price, datetime=dt, amount=1)
+                    return TradeOrder(type='invert', price=price, datetime=dt, amount=1, info={'decisions': labeled})
                 else:
-                    return TradeOrder(type='close', price=price, datetime=dt, amount=1)
+                    return TradeOrder(type='close', price=price, datetime=dt, amount=1, info={'decisions': labeled})
 
         elif trade_info['type'] == 'sell':
             if side == 'long':
                 if self.always_active:
-                    return TradeOrder(type='invert', price=price, datetime=dt, amount=1)
+                    return TradeOrder(type='invert', price=price, datetime=dt, amount=1, info={'decisions': labeled})
                 else:
-                    return TradeOrder(type='close', price=price, datetime=dt, amount=1)
+                    return TradeOrder(type='close', price=price, datetime=dt, amount=1, info={'decisions': labeled})
 
         return None

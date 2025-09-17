@@ -42,3 +42,31 @@ if __name__ == '__main__':
     if 'time' not in ohlc.columns:
         ohlc.insert(0, 'time', list(range(len(ohlc))))
     show_backtest_summary(tr, ohlc_df=ohlc)
+
+
+# --- Signal Contribution Analysis ---
+print("\n--- Signal Contribution Analysis ---")
+trades_df = tr.trades
+for idx, row in trades_df.iterrows():
+    # Retrieve entry decisions stored with the trade
+    entry_info = row.get('entry_info') if hasattr(row, 'get') else None
+    decisions = []
+    if isinstance(entry_info, dict):
+        decisions = entry_info.get('decisions') or []
+    side = row['type']
+    entry_price = row['buyprice'] if side == 'buy' else row['sellprice']
+    try:
+        print(f"        Trade #{idx + 1} ({side} @ {float(entry_price):.4f}):")
+    except Exception:
+        print(f"        Trade #{idx + 1} ({side} @ {entry_price}):")
+    for d in decisions:
+        if isinstance(d, dict):
+            label = d.get('label', 'UnknownSignal')
+            d_side = d.get('side') or 'neutral'
+            d_strength = float(d.get('strength', 0.0) or 0.0)
+        else:
+            label = getattr(d, 'name', None) or getattr(d, 'source', None) or d.__class__.__name__
+            d_side = getattr(d, 'side', None) or 'neutral'
+            d_strength = float(getattr(d, 'strength', 0.0) or 0.0)
+        print(f"          - {label}: {d_side} (strength: {d_strength:.2f})")
+    print()

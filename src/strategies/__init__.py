@@ -15,6 +15,11 @@ from .signals import (
     BollingerBandSignal,
 )
 from .swingtrade import MaCrossover
+from .combiners import (
+    GatedCombiner,
+    ThresholdedWeightedVote,
+    WeightedSignalCombiner,
+)
 
 __all__ = [
     'CompositeStrategy',
@@ -23,4 +28,7 @@ __all__ = [
     'MaCrossoverSignal',
     'BollingerBandSignal',
     'MaCrossover',
+    'GatedCombiner',
+    'ThresholdedWeightedVote',
+    'WeightedSignalCombiner',
 ]
