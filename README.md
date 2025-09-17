@@ -55,11 +55,16 @@ src/
   bridge/        # Data management and inter-component communication
   visualizer/    # Interactive plotting windows and summary UIs
   optimizer/     # Optuna-based optimization components
-  strategies/    # Example strategies (daytrade/swingtrade)
+  strategies/    # Strategies and composable signal architecture
+    signals/       # Modular signals (RSI, ADX/DMI, Supertrend, Donchian, MACD, Keltner, ATR, VWAP, etc.)
+    composite.py   # CompositeStrategy to aggregate multiple signals
+    combiners.py   # Gated/thresholded/weighted combiners for signal decisions
+    archetypes.py  # Prebuilt factories: Momentum Rider, Range Fader, Volatility Breakout
 vendors/
   pandas_ta/     # Vendored pandas-ta for technical indicators
 scripts/
   backtest/      # Example backtest scripts
+    composites/    # Example composite backtests (momentum_rider_test.py, range_fader_test.py, volatility_breakout_test.py)
   analysis/      # Analysis/plotting scripts
   optimization/  # Optimization utilities and examples
   playground/    # Development and testing scripts
@@ -109,6 +114,18 @@ Run:
 
 ```
 python scripts\analysis\plot_candlestick_with_indicators.py
+```
+
+### Example 4: Run a composite strategy (Momentum Rider)
+
+File: `scripts\backtest\composites\momentum_rider_test.py`
+
+This example assembles multiple signals into a composite strategy using the `archetypes` factory and prints per-trade signal contributions stored by the backtester.
+
+Run:
+
+```
+python scripts\backtest\composites\momentum_rider_test.py
 ```
 
 ## Programmatic Usage
@@ -173,6 +190,28 @@ indicators = [
 ]
 show_chart(ohlc_data=ohlc, indicators=indicators, show_volume=True, initial_candles=100)
 ```
+
+Example: Run a composite strategy programmatically:
+
+```python
+from src.backtester.engine import BacktestParameters, Engine
+from src.backtester.data import CandleData
+from src.strategies.archetypes import create_momentum_rider_strategy
+
+candles = CandleData(symbol="WDO", timeframe="15min")
+# candles.data = <your OHLCV DataFrame>
+
+params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+strategy = create_momentum_rider_strategy()  # returns a CompositeStrategy
+engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
+registry = engine.run_backtest(display_progress=True)
+result = registry.get_result()
+
+# Each trade row includes 'entry_info'/'exit_info' with labeled signal decisions
+print(registry.trades[["type", "entry_info", "exit_info"]].head())
+```
+
+Note: Composite strategies attach per-candle signal decisions to TradeOrder.info. The backtester persists these into TradeRegistry.trades as entry_info/exit_info, enabling post-trade analysis (e.g., which signals contributed and with what strengths).
 
 ## Data Notes
 

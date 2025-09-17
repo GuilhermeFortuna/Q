@@ -70,11 +70,13 @@ Trade management and performance analysis:
 - **`TradeOrder`**: Represents individual trade orders with:
   - Type: 'buy', 'sell', 'close', 'invert'
   - Price, datetime, amount, slippage, comments
+  - New: optional `info: dict | None` — used by composite strategies to attach contextual info (e.g., labeled signal decisions per entry/exit check)
 - **`TradeRegistry`**: Comprehensive trade tracking and analysis
   - Real-time position management
   - Performance metrics: profit factor, accuracy, drawdown
   - Monthly result computation with tax calculations
   - Brazilian tax rates: 15% swing trade, 20% day trade
+  - New DataFrame columns `entry_info` and `exit_info` — persist the `TradeOrder.info` payloads for the orders that opened/closed/inverted a position
 
 ### 5. Utils (`utils.py`)
 
@@ -163,6 +165,32 @@ results = engine.run_backtest(display_progress=True)
 performance = results.get_result()
 ```
 
+### Reading decision labels from trades
+
+```python
+from src.backtester.data import CandleData
+from src.backtester.engine import BacktestParameters, Engine
+from src.strategies.archetypes import create_momentum_rider_strategy
+
+# Minimal setup
+candles = CandleData(symbol="WDO", timeframe="15min")
+# candles.data = <your OHLCV DataFrame>
+params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+strategy = create_momentum_rider_strategy()
+engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
+results = engine.run_backtest(display_progress=False)
+
+# After the backtest
+trades = results.trades  # TradeRegistry DataFrame
+for i, row in trades.iterrows():
+    entry_meta = row.get("entry_info") if hasattr(row, "get") else row["entry_info"]
+    decisions = (entry_meta or {}).get("decisions", []) if isinstance(entry_meta, dict) else []
+    print(f"Trade #{i+1} type={row['type']}:")
+    for d in decisions:
+        print(f"  - {d.get('label')}: {d.get('side')} (strength={float(d.get('strength', 0.0)):.2f})")
+```
+
+See `scripts\backtest\composites\` for examples that print this analysis.
 
 ## CLI Examples
 
