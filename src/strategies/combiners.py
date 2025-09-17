@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, Optional, List, Tuple
+from abc import ABC, abstractmethod
+from typing import Iterable, Optional, List, Tuple
 
 from src.strategies.signals import SignalDecision
 
@@ -18,12 +19,28 @@ def _clip01(x: float) -> float:
     return xf
 
 
-def GatedCombiner(
-    filter_indices: List[int],
-    entry_indices: List[int],
-    require_all_filters: bool = False,
-    require_entry_agreement: bool = True,
-) -> Callable[[Iterable[SignalDecision]], Tuple[Optional[str], float]]:
+class SignalCombiner(ABC):
+    """
+    Abstract base class for signal combiners.
+    """
+
+    @abstractmethod
+    def combine(
+        self, decisions: Iterable[SignalDecision]
+    ) -> Tuple[Optional[str], float]:
+        """
+        Takes an iterable of SignalDecision objects and returns a single
+        combined decision as a (side, strength) tuple.
+        """
+        raise NotImplementedError
+
+    def __call__(
+        self, decisions: Iterable[SignalDecision]
+    ) -> Tuple[Optional[str], float]:
+        return self.combine(decisions)
+
+
+class GatedCombiner(SignalCombiner):
     """
     Combiner that gates entry signals by one or more filter signals.
 
@@ -46,25 +63,41 @@ def GatedCombiner(
         weighted vote among entry signals determines the side.
     """
 
-    fi = list(filter_indices)
-    ei = list(entry_indices)
+    def __init__(
+        self,
+        filter_indices: List[int],
+        entry_indices: List[int],
+        require_all_filters: bool = False,
+        require_entry_agreement: bool = True,
+    ):
+        self.fi = list(filter_indices)
+        self.ei = list(entry_indices)
+        self.require_all_filters = require_all_filters
+        self.require_entry_agreement = require_entry_agreement
 
-    def _combine(decisions: Iterable[SignalDecision]) -> Tuple[Optional[str], float]:
+    def combine(
+        self, decisions: Iterable[SignalDecision]
+    ) -> Tuple[Optional[str], float]:
         decs = list(decisions)
         # Validate indices: if any out-of-bounds, return neutral safely.
-        if any(k < 0 or k >= len(decs) for k in fi + ei):
+        if any(k < 0 or k >= len(decs) for k in self.fi + self.ei):
             return None, 0.0
 
         # Determine if filters are active
         active_flags: List[bool] = []
-        for k in fi:
+        for k in self.fi:
             d = decs[k]
-            active_flags.append((getattr(d, 'side', None) is not None) and (_clip01(getattr(d, 'strength', 0.0)) > 0.0))
+            active_flags.append(
+                (getattr(d, 'side', None) is not None)
+                and (_clip01(getattr(d, 'strength', 0.0)) > 0.0)
+            )
         if not active_flags:
             # No filters configured: let entries decide
             filters_active = True
         else:
-            filters_active = all(active_flags) if require_all_filters else any(active_flags)
+            filters_active = (
+                all(active_flags) if self.require_all_filters else any(active_flags)
+            )
         if not filters_active:
             return None, 0.0
 
@@ -72,7 +105,7 @@ def GatedCombiner(
         long_sum = 0.0
         short_sum = 0.0
         entry_sides: List[str] = []
-        for k in ei:
+        for k in self.ei:
             d = decs[k]
             s = _clip01(getattr(d, 'strength', 0.0))
             sd = getattr(d, 'side', None)
@@ -87,7 +120,7 @@ def GatedCombiner(
         if total == 0.0:
             return None, 0.0
 
-        if require_entry_agreement:
+        if self.require_entry_agreement:
             if not entry_sides:
                 return None, 0.0
             agree = all(x == entry_sides[0] for x in entry_sides)
@@ -101,22 +134,23 @@ def GatedCombiner(
         strength = min(1.0, abs(net) / total) if total > 0.0 else 0.0
         return side, strength
 
-    return _combine
 
-
-def ThresholdedWeightedVote(
-    threshold: float,
-) -> Callable[[Iterable[SignalDecision]], Tuple[Optional[str], float]]:
+class ThresholdedWeightedVote(SignalCombiner):
     """
     Like weighted_vote but emits only if absolute net >= threshold.
 
     threshold is on the absolute net (long_sum - short_sum) scale, not normalized.
     """
-    thr = float(threshold)
-    if thr < 0.0:
-        thr = 0.0
 
-    def _combine(decisions: Iterable[SignalDecision]) -> Tuple[Optional[str], float]:
+    def __init__(self, threshold: float):
+        thr = float(threshold)
+        if thr < 0.0:
+            thr = 0.0
+        self.thr = thr
+
+    def combine(
+        self, decisions: Iterable[SignalDecision]
+    ) -> Tuple[Optional[str], float]:
         long_sum = 0.0
         short_sum = 0.0
         for d in decisions:
@@ -130,22 +164,17 @@ def ThresholdedWeightedVote(
         total = long_sum + short_sum
         if total == 0.0:
             return None, 0.0
-        if abs(net) < thr:
+        if abs(net) < self.thr:
             return None, 0.0
         side = 'long' if net > 0.0 else 'short'
         strength = min(1.0, abs(net) / total) if total > 0.0 else 0.0
         return side, strength
 
-    return _combine
-
 
 essential_types = (int, float)
 
 
-def WeightedSignalCombiner(
-    weights: List[float],
-    normalize_weights: bool = False,
-) -> Callable[[Iterable[SignalDecision]], Tuple[Optional[str], float]]:
+class WeightedSignalCombiner(SignalCombiner):
     """
     Weight each incoming signal strength by a provided weight vector before tallying.
 
@@ -156,17 +185,28 @@ def WeightedSignalCombiner(
     normalize_weights : bool
         If True, weights will be scaled to sum to 1 (when sum > 0).
     """
-    base_weights = [float(w) if isinstance(w, essential_types) else 0.0 for w in list(weights)]
-    base_weights = [w if w > 0.0 else 0.0 for w in base_weights]
 
-    def _combine(decisions: Iterable[SignalDecision]) -> Tuple[Optional[str], float]:
+    def __init__(
+        self,
+        weights: List[float],
+        normalize_weights: bool = False,
+    ):
+        self.base_weights = [
+            float(w) if isinstance(w, essential_types) else 0.0 for w in list(weights)
+        ]
+        self.base_weights = [w if w > 0.0 else 0.0 for w in self.base_weights]
+        self.normalize_weights = normalize_weights
+
+    def combine(
+        self, decisions: Iterable[SignalDecision]
+    ) -> Tuple[Optional[str], float]:
         decs = list(decisions)
-        if len(decs) != len(base_weights):
+        if len(decs) != len(self.base_weights):
             raise ValueError(
-                f"weights length ({len(base_weights)}) must match decisions length ({len(decs)})"
+                f"weights length ({len(self.base_weights)}) must match decisions length ({len(decs)})"
             )
-        w = base_weights
-        if normalize_weights:
+        w = self.base_weights
+        if self.normalize_weights:
             ssum = sum(w)
             if ssum > 0.0:
                 w = [x / ssum for x in w]
@@ -188,5 +228,3 @@ def WeightedSignalCombiner(
         side = 'long' if net > 0.0 else 'short'
         strength = min(1.0, abs(net) / total)
         return side, strength
-
-    return _combine

@@ -6,7 +6,7 @@ Strategy implementations and a composable signal architecture used with the back
 
 - CompositeStrategy: Aggregates multiple `TradingSignal` components into a single decision.
 - Signals package: Ready-to-use building blocks (RSI mean reversion, ADX/DMI, Supertrend, Donchian breakout, MACD momentum, Keltner squeeze, ATR trailing stop, VWAP deviation, Heikin Ashi trend, MTF MA alignment, Choppiness filter, Volume spike/exhaustion, plus helpers).
-- Combiners: Functions to combine multiple signal decisions (gated, thresholded, weighted voting) for different decision policies.
+- Combiners: Classes to combine multiple signal decisions (gated, thresholded, weighted voting) for different decision policies.
 - Archetypes: Prebuilt composite strategy factories (Momentum Rider, Range Fader, Volatility Breakout) to speed up experimentation.
 
 ## Packages and modules
