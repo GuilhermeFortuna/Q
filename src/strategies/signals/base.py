@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, Literal
-from abc import ABC, abstractmethod
+from abc import ABC, ABCMeta, abstractmethod
 
 
 SignalSide = Literal["long", "short"]
@@ -31,7 +31,15 @@ class SignalDecision:
             self.strength = 1.0
 
 
-class TradingSignal(ABC):
+class TradingSignalMeta(ABCMeta):
+    """Metaclass that provides clean string representation for TradingSignal classes."""
+
+    def __repr__(cls) -> str:
+        """Return just the class name when printing the class object itself."""
+        return cls.__name__
+
+
+class TradingSignal(ABC, metaclass=TradingSignalMeta):
     """
     Base interface for composable trading signals.
 
@@ -45,6 +53,10 @@ class TradingSignal(ABC):
     numpy arrays on data['candle'] (e.g., candle.close[i]). Therefore, compute_indicators
     should add any required indicator columns to data['candle'].data.
     """
+
+    def __repr__(self) -> str:
+        """Return a clean string representation showing just the class name."""
+        return f"{self.__class__.__name__}"
 
     @abstractmethod
     def compute_indicators(self, data: dict) -> None:

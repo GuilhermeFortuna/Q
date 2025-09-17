@@ -25,6 +25,23 @@ from .heikin_ashi_trend import HeikinAshiTrendContinuationSignal
 from .mtf_ma_alignment import MtfMaAlignmentFilter
 from .choppiness_filter import ChoppinessRegimeFilter
 
+__signals__ = [
+    MaCrossoverSignal,
+    BollingerBandSignal,
+    RsiMeanReversionSignal,
+    AdxDmiSignal,
+    SupertrendFlipSignal,
+    DonchianBreakoutSignal,
+    MacdMomentumSignal,
+    KeltnerSqueezeBreakoutSignal,
+    VwapDeviationReversionSignal,
+    VolumeSpikeExhaustionSignal,
+    AtrTrailingStopReversalSignal,
+    HeikinAshiTrendContinuationSignal,
+    MtfMaAlignmentFilter,
+    ChoppinessRegimeFilter,
+]
+
 __all__ = [
     'TradingSignal',
     'SignalDecision',
