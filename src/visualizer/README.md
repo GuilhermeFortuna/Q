@@ -187,11 +187,8 @@ The package includes validation for:
 
 ## Examples
 
-See the main project's `test.py` for a complete example integrating the visualizer with backtest results from the backtester package.
+See example usage in `scripts/backtest/dol_test.py` or `scripts/backtest/ccm_test.py` for complete examples integrating the visualizer with backtest results from the backtester package.
 
 ## License
 
 Part of the PyQuant trading framework workspace.
-```
-This is the complete content that accurately reflects your current visualizer package implementation. You can copy and paste this entire content to replace your existing README.md file.
-```

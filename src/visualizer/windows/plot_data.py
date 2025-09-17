@@ -1,6 +1,9 @@
 import pandas as pd
 import pyqtgraph as pg
 from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer, QPointF
+from PySide6.QtGui import QTextItem
+import numpy as np
 
 from src.visualizer.plots import CandlestickItem
 from src.visualizer.plots import LinePlotItem
@@ -34,6 +37,450 @@ class DateAxis(pg.AxisItem):
                 # Return an empty string for indices outside the data range
                 strings.append('')
         return strings
+
+
+class ChartTooltipController:
+    """Controller for handling hover tooltips on chart elements."""
+
+    def __init__(self, plot_window):
+        self.plot_window = plot_window
+        self.price_plot = plot_window.price_plot
+        self.view_box = self.price_plot.getViewBox()
+
+        # Tooltip configuration
+        self.enabled = True
+        self.delay_ms = 100
+        self.pick_radius = 10
+
+        # Tooltip display
+        self.tooltip_item = pg.TextItem(anchor=(0, 1))
+        self.tooltip_item.setVisible(False)
+        self.price_plot.addItem(self.tooltip_item)
+
+        # Hover state
+        self._current_hover = None
+        self._tooltip_timer = QTimer()
+        self._tooltip_timer.setSingleShot(True)
+        self._tooltip_timer.timeout.connect(self._show_tooltip)
+        self._last_mouse_pos = None
+
+        # Connect mouse events
+        self.price_plot.scene().sigMouseMoved.connect(self._on_mouse_moved)
+
+    def _on_mouse_moved(self, pos):
+        """Handle mouse movement over the plot."""
+        if not self.enabled:
+            self._hide_tooltip()
+            return
+
+        # Convert to view coordinates
+        view_pos = self.view_box.mapSceneToView(pos)
+        self._last_mouse_pos = pos
+
+        # Find nearest data point
+        hover_info = self._find_nearest_point(view_pos)
+
+        if hover_info != self._current_hover:
+            self._current_hover = hover_info
+            self._tooltip_timer.stop()
+
+            if hover_info:
+                self._tooltip_timer.start(self.delay_ms)
+            else:
+                self._hide_tooltip()
+
+    def _find_nearest_point(self, view_pos):
+        """Find the nearest data point within pick radius."""
+        x_pos = view_pos.x()
+        y_pos = view_pos.y()
+
+        # Convert pick radius from pixels to data units
+        pixel_size = self.view_box.viewPixelSize()
+        if pixel_size is None:
+            return None
+
+        # Handle both QPointF and tuple returns from viewPixelSize()
+        try:
+            if hasattr(pixel_size, 'x'):
+                # QPointF object
+                x_radius = pixel_size.x() * self.pick_radius
+                y_radius = pixel_size.y() * self.pick_radius
+            else:
+                # Tuple (x, y)
+                x_radius = pixel_size[0] * self.pick_radius
+                y_radius = pixel_size[1] * self.pick_radius
+        except (AttributeError, IndexError, TypeError):
+            # Fallback to reasonable defaults if pixel size detection fails
+            x_radius = self.pick_radius
+            y_radius = self.pick_radius
+
+        closest_info = None
+        closest_distance = float('inf')
+
+        # Check candlestick data
+        if (
+            hasattr(self.plot_window, '_ohlc_data')
+            and self.plot_window._ohlc_data is not None
+        ):
+            ohlc_info = self._check_candlestick_hover(x_pos, y_pos, x_radius, y_radius)
+            if ohlc_info and ohlc_info['distance'] < closest_distance:
+                closest_info = ohlc_info
+                closest_distance = ohlc_info['distance']
+
+        # Check line plots
+        for item_info in getattr(self.plot_window, '_line_items', []):
+            line_info = self._check_line_hover(
+                item_info, x_pos, y_pos, x_radius, y_radius
+            )
+            if line_info and line_info['distance'] < closest_distance:
+                closest_info = line_info
+                closest_distance = line_info['distance']
+
+        # Check scatter plots
+        for item_info in getattr(self.plot_window, '_scatter_items', []):
+            scatter_info = self._check_scatter_hover(
+                item_info, x_pos, y_pos, x_radius, y_radius
+            )
+            if scatter_info and scatter_info['distance'] < closest_distance:
+                closest_info = scatter_info
+                closest_distance = scatter_info['distance']
+
+        # Check histogram plots
+        for plot in getattr(self.plot_window, '_indicator_plots', []):
+            # Map mouse position to the indicator plot's coordinate system
+            plot_view_box = plot.getViewBox()
+            plot_view_pos = plot_view_box.mapSceneToView(self._last_mouse_pos)
+
+            hist_info = self._check_histogram_hover(
+                plot, plot_view_pos.x(), plot_view_pos.y(), x_radius, y_radius
+            )
+            if hist_info and hist_info['distance'] < closest_distance:
+                closest_info = hist_info
+                closest_distance = hist_info['distance']
+
+        return closest_info
+
+    def _check_candlestick_hover(self, x_pos, y_pos, x_radius, y_radius):
+        """Check if hovering over candlestick data."""
+        ohlc = self.plot_window._ohlc_data
+
+        # Find nearest x index
+        x_index = max(0, min(len(ohlc) - 1, int(round(x_pos))))
+
+        if abs(x_pos - x_index) > x_radius:
+            return None
+
+        candle = ohlc.iloc[x_index]
+
+        # Check if y position is within candle range
+        if y_pos < candle['low'] - y_radius or y_pos > candle['high'] + y_radius:
+            return None
+
+        # Calculate distance to nearest relevant price
+        if candle['low'] <= y_pos <= candle['high']:
+            y_distance = 0  # Inside the candle
+        else:
+            y_distance = min(abs(y_pos - candle['low']), abs(y_pos - candle['high']))
+
+        x_distance = abs(x_pos - x_index)
+        distance = (x_distance / x_radius) ** 2 + (y_distance / y_radius) ** 2
+
+        # Get timestamp if available
+        x_value = self._get_x_display_value(x_index)
+
+        return {
+            'type': 'candlestick',
+            'name': self._get_symbol_name(),
+            'x_index': x_index,
+            'x_value': x_value,
+            'open': candle['open'],
+            'high': candle['high'],
+            'low': candle['low'],
+            'close': candle['close'],
+            'volume': candle.get('volume'),
+            'distance': distance,
+        }
+
+    def _check_line_hover(self, item_info, x_pos, y_pos, x_radius, y_radius):
+        """Check if hovering over line plot data."""
+        x_data = item_info['x_data']
+        y_data = item_info['y_data']
+        name = item_info['name']
+
+        if len(x_data) == 0 or len(y_data) == 0:
+            return None
+
+        # Find nearest x point
+        x_array = np.array(x_data)
+        y_array = np.array(y_data)
+
+        # Remove NaN values
+        valid_mask = ~(np.isnan(y_array) | np.isinf(y_array))
+        if not np.any(valid_mask):
+            return None
+
+        x_valid = x_array[valid_mask]
+        y_valid = y_array[valid_mask]
+
+        x_distances = np.abs(x_valid - x_pos)
+        nearest_x_idx = np.argmin(x_distances)
+
+        if x_distances[nearest_x_idx] > x_radius:
+            return None
+
+        nearest_x = x_valid[nearest_x_idx]
+        nearest_y = y_valid[nearest_x_idx]
+
+        y_distance = abs(y_pos - nearest_y)
+        if y_distance > y_radius:
+            return None
+
+        distance = (x_distances[nearest_x_idx] / x_radius) ** 2 + (
+            y_distance / y_radius
+        ) ** 2
+
+        # Map back to original index for x_value display
+        original_idx = int(round(nearest_x))
+        x_value = self._get_x_display_value(original_idx)
+
+        return {
+            'type': 'line',
+            'name': name,
+            'x_index': original_idx,
+            'x_value': x_value,
+            'y_value': nearest_y,
+            'distance': distance,
+        }
+
+    def _check_histogram_hover(self, indicator_plot, x_pos, y_pos, x_radius, y_radius):
+        """Check if hovering over histogram bars."""
+        # Get all bar items from the indicator plot
+        for item in indicator_plot.items:
+            if isinstance(item, pg.BarGraphItem):
+                return self._check_bar_item_hover(
+                    item, indicator_plot, x_pos, y_pos, x_radius, y_radius
+                )
+        return None
+
+    def _check_bar_item_hover(
+        self, bar_item, indicator_plot, x_pos, y_pos, x_radius, y_radius
+    ):
+        """Check hover on individual bar graph item."""
+        try:
+            # Get bar data
+            bar_data = getattr(bar_item, 'opts', {})
+            x_data = bar_data.get('x', [])
+            height_data = bar_data.get('height', [])
+            width = bar_data.get('width', 0.6)
+
+            if not x_data or not height_data:
+                return None
+
+            # Find nearest bar
+            x_array = np.array(x_data)
+            height_array = np.array(height_data)
+
+            x_distances = np.abs(x_array - x_pos)
+            nearest_idx = np.argmin(x_distances)
+
+            nearest_x = x_array[nearest_idx]
+            nearest_height = height_array[nearest_idx]
+
+            # Check if within bar bounds
+            if abs(x_pos - nearest_x) > width / 2 + x_radius:
+                return None
+
+            if y_pos < -y_radius or y_pos > nearest_height + y_radius:
+                return None
+
+            distance = (abs(x_pos - nearest_x) / (width / 2 + x_radius)) ** 2
+            if y_pos > nearest_height:
+                distance += ((y_pos - nearest_height) / y_radius) ** 2
+            elif y_pos < 0:
+                distance += (abs(y_pos) / y_radius) ** 2
+
+            # Get plot title as name
+            name = getattr(indicator_plot, '_title', 'Histogram')
+            if hasattr(indicator_plot, 'titleLabel') and indicator_plot.titleLabel:
+                name = indicator_plot.titleLabel.text
+
+            x_value = self._get_x_display_value(int(round(nearest_x)))
+
+            return {
+                'type': 'histogram',
+                'name': name,
+                'x_index': int(round(nearest_x)),
+                'x_value': x_value,
+                'y_value': nearest_height,
+                'distance': distance,
+            }
+
+        except Exception:
+            return None
+
+    def _get_x_display_value(self, x_index):
+        """Get display-friendly x value (timestamp or index)."""
+        if (
+            hasattr(self.plot_window, '_time_values')
+            and self.plot_window._time_values is not None
+        ):
+            if 0 <= x_index < len(self.plot_window._time_values):
+                timestamp = self.plot_window._time_values.iloc[x_index]
+                return pd.to_datetime(timestamp).strftime('%Y-%m-%d %H:%M')
+        return str(x_index)
+
+    def _get_symbol_name(self):
+        """Get symbol name from window title or default."""
+        title = self.plot_window.windowTitle()
+        # Extract symbol from title like "EURUSD 5min"
+        parts = title.split()
+        if parts:
+            return parts[0]
+        return "Symbol"
+
+    def _show_tooltip(self):
+        """Show tooltip for current hover info."""
+        if not self._current_hover or not self._last_mouse_pos:
+            return
+
+        html = self._build_tooltip_html(self._current_hover)
+        self.tooltip_item.setHtml(html)
+        self.tooltip_item.setVisible(True)
+
+        # Position tooltip near cursor
+        view_pos = self.view_box.mapSceneToView(self._last_mouse_pos)
+
+        # Offset tooltip to avoid cursor overlap
+        try:
+            pixel_size = self.view_box.viewPixelSize()
+            dx = pixel_size.x() * 16
+            dy = -pixel_size.y() * 12
+        except Exception:
+            dx, dy = 0, 0
+
+        self.tooltip_item.setPos(view_pos.x() + dx, view_pos.y() + dy)
+
+    def _build_tooltip_html(self, hover_info):
+        """Build HTML for tooltip display."""
+        info_type = hover_info['type']
+        name = hover_info['name']
+        x_value = hover_info['x_value']
+
+        if info_type == 'candlestick':
+            volume_text = ""
+            if hover_info['volume'] is not None:
+                volume_text = f"<div>Volume: {hover_info['volume']:,.0f}</div>"
+
+            html = f"""
+            <div style='background-color:#20222A; color:#eaeaf1; padding:8px 10px; border:1px solid #3A3D47; border-radius:6px;'>
+                <div style='font-weight:bold;margin-bottom:4px;'>{name}</div>
+                <div style='color:#a7a7b3;margin-bottom:4px;'>{x_value}</div>
+                <div>O: {hover_info['open']:.4f}</div>
+                <div>H: {hover_info['high']:.4f}</div>
+                <div>L: {hover_info['low']:.4f}</div>
+                <div>C: {hover_info['close']:.4f}</div>
+                {volume_text}
+            </div>
+            """
+        elif info_type == 'line':
+            html = f"""
+            <div style='background-color:#20222A; color:#eaeaf1; padding:8px 10px; border:1px solid #3A3D47; border-radius:6px;'>
+                <div style='font-weight:bold;margin-bottom:4px;'>{name}</div>
+                <div style='color:#a7a7b3;margin-bottom:4px;'>{x_value}</div>
+                <div>Value: {hover_info['y_value']:.4f}</div>
+            </div>
+            """
+        elif info_type == 'scatter':
+            html = f"""
+            <div style='background-color:#20222A; color:#eaeaf1; padding:8px 10px; border:1px solid #3A3D47; border-radius:6px;'>
+                <div style='font-weight:bold;margin-bottom:4px;'>{name}</div>
+                <div style='color:#a7a7b3;margin-bottom:4px;'>{x_value}</div>
+                <div>Value: {hover_info['y_value']:.4f}</div>
+            </div>
+            """
+        elif info_type == 'histogram':
+            html = f"""
+            <div style='background-color:#20222A; color:#eaeaf1; padding:8px 10px; border:1px solid #3A3D47; border-radius:6px;'>
+                <div style='font-weight:bold;margin-bottom:4px;'>{name}</div>
+                <div style='color:#a7a7b3;margin-bottom:4px;'>{x_value}</div>
+                <div>Value: {hover_info['y_value']:,.2f}</div>
+            </div>
+            """
+        else:
+            html = f"""
+            <div style='background-color:#20222A; color:#eaeaf1; padding:8px 10px; border:1px solid #3A3D47; border-radius:6px;'>
+                <div style='font-weight:bold;'>{name}</div>
+                <div>{x_value}</div>
+            </div>
+            """
+
+        return html
+
+    def _hide_tooltip(self):
+        """Hide the tooltip."""
+        self.tooltip_item.setVisible(False)
+
+    def set_enabled(self, enabled):
+        """Enable or disable tooltip functionality."""
+        self.enabled = enabled
+        if not enabled:
+            self._hide_tooltip()
+
+    def _check_scatter_hover(self, item_info, x_pos, y_pos, x_radius, y_radius):
+        """Check if hovering over scatter plot data."""
+        x_data = item_info['x_data']
+        y_data = item_info['y_data']
+        name = item_info['name']
+
+        if len(x_data) == 0 or len(y_data) == 0:
+            return None
+
+        # Find nearest scatter point
+        x_array = np.array(x_data)
+        y_array = np.array(y_data)
+
+        # Remove NaN values
+        valid_mask = ~(np.isnan(y_array) | np.isinf(y_array))
+        if not np.any(valid_mask):
+            return None
+
+        x_valid = x_array[valid_mask]
+        y_valid = y_array[valid_mask]
+
+        # Calculate distances to all valid points
+        x_distances = np.abs(x_valid - x_pos)
+        y_distances = np.abs(y_valid - y_pos)
+
+        # Find points within the pick radius (using circular distance)
+        within_radius_mask = (x_distances <= x_radius) & (y_distances <= y_radius)
+
+        if not np.any(within_radius_mask):
+            return None
+
+        # Among points within radius, find the closest one
+        valid_indices = np.where(within_radius_mask)[0]
+        distances = np.sqrt(
+            (x_distances[valid_indices] / x_radius) ** 2
+            + (y_distances[valid_indices] / y_radius) ** 2
+        )
+
+        closest_idx = valid_indices[np.argmin(distances)]
+        nearest_x = x_valid[closest_idx]
+        nearest_y = y_valid[closest_idx]
+        distance = distances[np.argmin(distances)]
+
+        # Map back to original index for x_value display
+        original_idx = int(round(nearest_x))
+        x_value = self._get_x_display_value(original_idx)
+
+        return {
+            'type': 'scatter',
+            'name': name,
+            'x_index': original_idx,
+            'x_value': x_value,
+            'y_value': nearest_y,
+            'distance': distance,
+        }
 
 
 class PlotWindow(BaseWindow):
@@ -81,6 +528,10 @@ class PlotWindow(BaseWindow):
         self._ohlc_data = None
         self._initial_candles = initial_candles
         self._indicator_plots = []
+        # Store line items for tooltip functionality
+        self._line_items = []
+        # Store scatter items for tooltip functionality
+        self._scatter_items = []
 
         # Create a plot item for price
         self.price_plot = self.graphWidget.addPlot(row=0, col=0)
@@ -91,6 +542,9 @@ class PlotWindow(BaseWindow):
         vb = self.price_plot.getViewBox()
         vb.disableAutoRange()
         self.price_plot.sigXRangeChanged.connect(self._on_x_range_changed)
+
+        # Initialize tooltip controller
+        self._tooltip_controller = None
 
     def _on_x_range_changed(self):
         """
@@ -164,6 +618,10 @@ class PlotWindow(BaseWindow):
         initial_view_start = max(0, num_candles - self._initial_candles)
         self.price_plot.setXRange(initial_view_start, num_candles)
 
+        # Initialize tooltip controller after candlestick is added
+        if self._tooltip_controller is None:
+            self._tooltip_controller = ChartTooltipController(self)
+
         # Optionally, add volume subplot
         if show_volume:
             self.add_volume_subplot()
@@ -190,6 +648,16 @@ class PlotWindow(BaseWindow):
 
         line = LinePlotItem(x_numeric.tolist(), y, name=name, color=color, width=width)
         self.price_plot.addItem(line)
+
+        # Store line data for tooltip functionality
+        self._line_items.append(
+            {
+                'item': line,
+                'x_data': x_numeric.tolist(),
+                'y_data': y.tolist() if hasattr(y, 'tolist') else list(y),
+                'name': name,
+            }
+        )
 
     def add_scatter_plot(self, x, y, name, color, size, symbol):
         """
@@ -223,6 +691,15 @@ class PlotWindow(BaseWindow):
             symbol=symbol,
         )
         self.price_plot.addItem(scatter)
+        self._scatter_items.append(
+            {
+                'item': scatter,
+                'x_data': x_numeric.tolist(),
+                'y_data': y.tolist() if hasattr(y, 'tolist') else list(y),
+                'name': name,
+                'size': size,
+            }
+        )
 
     def add_volume_subplot(self):
         """
