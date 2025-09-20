@@ -228,3 +228,48 @@ class WeightedSignalCombiner(SignalCombiner):
         side = 'long' if net > 0.0 else 'short'
         strength = min(1.0, abs(net) / total)
         return side, strength
+
+
+class HybridSignalCombiner(SignalCombiner):
+    """
+    Convenience combiner for HybridCandleTickStrategy.
+
+    Wraps either a WeightedSignalCombiner or GatedCombiner (or any SignalCombiner)
+    and exposes a unified interface for use in hybrid strategies. Also exposes
+    class methods to build from common configurations.
+    """
+
+    def __init__(self, combiner: SignalCombiner):
+        if not isinstance(combiner, SignalCombiner):
+            raise TypeError("combiner must be an instance of SignalCombiner")
+        self._inner = combiner
+
+    def combine(
+        self, decisions: Iterable[SignalDecision]
+    ) -> Tuple[Optional[str], float]:
+        return self._inner.combine(decisions)
+
+    @classmethod
+    def from_weights(
+        cls, weights: List[float], normalize_weights: bool = False
+    ) -> 'HybridSignalCombiner':
+        return cls(
+            WeightedSignalCombiner(weights=weights, normalize_weights=normalize_weights)
+        )
+
+    @classmethod
+    def gated(
+        cls,
+        filter_indices: List[int],
+        entry_indices: List[int],
+        require_all_filters: bool = False,
+        require_entry_agreement: bool = True,
+    ) -> 'HybridSignalCombiner':
+        return cls(
+            GatedCombiner(
+                filter_indices=filter_indices,
+                entry_indices=entry_indices,
+                require_all_filters=require_all_filters,
+                require_entry_agreement=require_entry_agreement,
+            )
+        )

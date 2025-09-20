@@ -8,6 +8,11 @@ for backward compatibility.
 """
 
 from .composite import CompositeStrategy
+from .hybrid_strategy import (
+    HybridCandleTickStrategy,
+    HybridExecutionConfig,
+    HybridExitConfig,
+)
 from .signals import (
     TradingSignal,
     SignalDecision,
@@ -23,6 +28,9 @@ from .combiners import (
 
 __all__ = [
     'CompositeStrategy',
+    'HybridCandleTickStrategy',
+    'HybridExecutionConfig',
+    'HybridExitConfig',
     'TradingSignal',
     'SignalDecision',
     'MaCrossoverSignal',
