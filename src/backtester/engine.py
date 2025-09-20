@@ -43,12 +43,12 @@ class BacktestParameters:
         if self.entry_time_limit is not None and not isinstance(
             self.entry_time_limit, dt.time
         ):
-            raise TypeError('entry_time_limit must be a datetime object.')
+            raise TypeError('entry_time_limit must be a datetime.time.')
 
         if self.exit_time_limit is not None and not isinstance(
             self.exit_time_limit, dt.time
         ):
-            raise TypeError('exit_time_limit must be a datetime object.')
+            raise TypeError('exit_time_limit must be a datetime.time.')
 
         if self.max_trade_day is not None and not isinstance(self.max_trade_day, int):
             raise TypeError('max_trade_day must be an int.')
@@ -76,24 +76,22 @@ class EngineData(ABC):
         self._dtype_map = None
 
     def prepare(self, data: Optional[pd.DataFrame] = None) -> np.ndarray:
-        df = self.data.data if data is None else data
-        arr = np.zeros(shape=(len(data),), dtype=self._dtype_map)
-        for col, dtype in self._dtype_map:
-            arr[col] = df[col].astype(dtype).values
+        df = self.data if data is None else data
+        arr = np.zeros(shape=(len(df),), dtype=self.dtype_map)
+        for col, dtype in self.dtype_map:
+            if col == 'datetime':
+                if 'datetime' in df.columns:
+                    arr[col] = df['datetime'].astype('int64').to_numpy()
+                else:
+                    # datetime as index
+                    arr[col] = df.index.view('int64')
+            else:
+                arr[col] = df[col].astype(dtype).to_numpy()
         return arr
 
     @abstractmethod
     def compartmentalize(self) -> Generator:
-
-        if self.data is None:
-            raise ValueError(
-                'No data to compartmentalize. Load data to OHLCData.data first.'
-            )
-
-        for dt, data in self.data.groupby(self.data.index.date):
-            inst = self.__class__(**self.__dict__)
-            inst.data = data
-            yield inst
+        raise NotImplementedError
 
 
 class EngineCandleData(EngineData):
@@ -137,9 +135,11 @@ class EngineTickData(EngineData):
         ]
 
     def compartmentalize(self):
-        grouped_data = self.data.data.groupby(self.data.data['datetime'].dt.date)
-        # self._num_chunks = len(grouped_data)
-        for date, group in grouped_data:
+        if 'datetime' in self.data.columns:
+            grouped = self.data.groupby(self.data['datetime'].dt.date)
+        else:
+            grouped = self.data.groupby(self.data.index.date)
+        for date, group in grouped:
             yield EngineDataChunk(name='tick', date=date, data=self.prepare(data=group))
 
 
@@ -178,10 +178,10 @@ class Engine:
         for name, data_obj in data.items():
             if name not in Engine.DATA_TYPES:
                 raise ValueError(
-                    f'Invalid data type: {name}. Valid data types are: {Engine.DATA_TYPES.keys()}'
+                    f'Invalid data type: {name}. Valid data types are: {list(Engine.DATA_TYPES.keys())}'
                 )
-            elif isinstance(data_obj, EngineData):
-                continue
+            if isinstance(data_obj, EngineData):
+                self.data[name] = data_obj
             else:
                 self.data[name] = Engine.DATA_TYPES[name](data_obj)
 
@@ -213,20 +213,17 @@ class Engine:
             raise NotImplementedError('Distributed backtesting is not yet implemented.')
     '''
 
+    @staticmethod
     def manage_backtest_execution(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            use_multiprocessing = kwargs.get('use_multiprocessing', False)
-            num_processes = kwargs.get('num_processes', multiprocessing.cpu_count())
-
+            use_multiprocessing = kwargs.pop('use_multiprocessing', False)
+            kwargs.pop('num_processes', None)
             if use_multiprocessing:
                 raise NotImplementedError('Multiprocessing is not yet implemented.')
-
-            else:
-                self.strategy.compute_indicators(self.data)
-                self.data['candle'].set_values_as_attrs()
-                display_progress = kwargs.get('display_progress', False)
-                return func(self, display_progress)
+            self.strategy.compute_indicators(self.data)
+            self.data['candle'].set_values_as_attrs()
+            return func(self, *args, **kwargs)
 
         return wrapper
 
@@ -234,21 +231,35 @@ class Engine:
     def run_backtest(self, display_progress: bool = False) -> None:
         from tqdm import tqdm
 
-        index = np.array(range(len(self.data['candle'].data)))
+        candle = self.data['candle']
+        n = len(candle.data)
+        if n < 2:
+            # nothing to iterate; still ensure final close if any open trade
+            if self.trades.open_trade_info is not None and n > 0:
+                self.trades._close_position(
+                    price=candle.close[0],
+                    datetime_val=candle.datetime_index[0],
+                    comment='Insufficient data to continue. Closing open trade.',
+                )
+            data_manager.set_backtest_results(self.trades)
+            return self.trades
 
-        if display_progress:
-            pbar = tqdm(total=len(index), desc='Running backtest', colour='yellow')
+        index = np.arange(n, dtype='int64')
+        pbar = (
+            tqdm(total=n - 1, desc='Running backtest', colour='yellow')
+            if display_progress
+            else None
+        )
 
+        last_idx = 0
         for i in index[1:]:
-            order = None
+            last_idx = i
 
-            # Trade entry
             if self.trades.open_trade_info is None:
                 order = self.strategy.entry_strategy(i, self.data)
                 if isinstance(order, TradeOrder):
                     self.trades.register_order(order)
 
-            # Trade exit
             if self.trades.open_trade_info is not None:
                 order = self.strategy.exit_strategy(
                     i, self.data, trade_info=self.trades.open_trade_info
@@ -256,17 +267,19 @@ class Engine:
                 if isinstance(order, TradeOrder):
                     self.trades.register_order(order)
 
-            if display_progress:
+            if pbar:
                 pbar.update(1)
+
+        if pbar:
+            pbar.close()
 
         if self.trades.open_trade_info is not None:
             self.trades._close_position(
-                price=self.data['candle'].close[i],
-                datetime_val=self.data['candle'].datetime_index[i],
+                price=candle.close[last_idx],
+                datetime_val=candle.datetime_index[last_idx],
                 comment='No more data to process. Closing open trade.',
             )
 
-        # Store results in the shared DataManager for visualization/bridge
         data_manager.set_backtest_results(self.trades)
         return self.trades
 
