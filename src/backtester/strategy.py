@@ -19,5 +19,5 @@ class TradingStrategy(ABC):
         pass
 
     @abstractmethod
-    def exit_strategy(self, i: int, data: dict) -> Union[TradeOrder, None]:
+    def exit_strategy(self, i: int, data: dict, trade_info) -> Union[TradeOrder, None]:
         pass
