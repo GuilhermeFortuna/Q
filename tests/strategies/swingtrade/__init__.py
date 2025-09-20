@@ -1,0 +1,1 @@
+# Swingtrade strategies test package
