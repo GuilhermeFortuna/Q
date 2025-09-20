@@ -19,6 +19,7 @@ dependencies = [
     "docutils>=0.22",
     "pandas-ta==0.3.14b0",
     "coverage>=7.10.6",
+    "pytest>=8.4.2",
 ]
 
 [tool.black]
