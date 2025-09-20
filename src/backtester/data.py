@@ -80,7 +80,9 @@ class CandleData(MarketData):
         pass
 
     @staticmethod
-    def format_candle_data_from_mt5(data: np.ndarray) -> pd.DataFrame:
+    def format_candle_data_from_mt5(
+        data: np.ndarray, use_tick_volume: Optional[bool] = False
+    ) -> pd.DataFrame:
         """
         Formats raw candle data obtained from MetaTrader 5 (MT5) into a structured
         pandas DataFrame. The function processes the input array, converts the
@@ -100,8 +102,19 @@ class CandleData(MarketData):
         if data is not None:
             df = pd.DataFrame(data)
             df['datetime'] = pd.to_datetime(df['time'], unit='s')
-            df.drop(columns=['time', 'spread'], inplace=True)
             df.set_index('datetime', inplace=True, drop=True)
+
+            # Select volume to use
+            if 'volume' not in df.columns and any(
+                'volume' in col for col in list(df.columns)
+            ):
+                df['volume'] = (
+                    df['real_volume'].copy()
+                    if not use_tick_volume
+                    else df['tick_volume'].copy()
+                )
+
+            df.drop(columns=['time', 'spread'], inplace=True)
             return df
 
         else:
@@ -113,6 +126,7 @@ class CandleData(MarketData):
         timeframe: str,
         date_from: dt.datetime,
         date_to: dt.datetime,
+        use_tick_volume: Optional[bool] = False,
     ):
         error_message = f'Error importing data for symbol {mt5_symbol} from MT5.: {mt5.last_error()}'
 

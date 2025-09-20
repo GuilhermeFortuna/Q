@@ -113,6 +113,9 @@ class BacktestResultModel:
         """Set the OHLC DataFrame with validation."""
         if value is not None:
             if isinstance(value, pd.DataFrame) and not value.empty:
+                if 'time' not in value.columns:
+                    value.insert(0, 'time', list(range(len(value))))
+
                 self._ohlc_df = value
             else:
                 self._ohlc_df = None

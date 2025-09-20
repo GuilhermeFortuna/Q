@@ -1,0 +1,1 @@
+# Daytrade strategies test package
