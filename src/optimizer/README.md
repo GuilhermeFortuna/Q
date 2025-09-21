@@ -60,5 +60,61 @@ study = opt.run()
 print("Best params:", study.best_trial.params)
 ```
 
+## Using the evaluator (gate + score) in Optuna
+
+You can optimize an objective, not just a raw metric, by wiring the backtester evaluator.
+
+```python
+import optuna
+from src.backtester import (
+    Engine, BacktestParameters, CandleData,
+    AcceptanceCriteria, StrategyEvaluator, metrics_from_trade_registry,
+)
+
+criteria = AcceptanceCriteria(
+    min_trades=200,
+    min_profit_factor=1.3,
+    max_drawdown=0.20,
+    min_sharpe=1.0,
+)
+evaluator = StrategyEvaluator(criteria)
+
+
+def objective(trial: optuna.trial.Trial) -> float:
+    # Suggest params and build your strategy
+    params = {
+        'short_ma': trial.suggest_int('short_ma', 5, 50),
+        'long_ma': trial.suggest_int('long_ma', 20, 200),
+    }
+    strategy = MyStrategy(**params)
+
+    # Prepare engine (simplified sketch)
+    candles = CandleData(symbol='TEST', timeframe='15min')
+    candles.data = load_df()
+    bt_params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+    engine = Engine(parameters=bt_params, strategy=strategy, data={'candle': candles})
+
+    # Run backtest
+    registry = engine.run_backtest(display_progress=False)
+
+    # Evaluate
+    m = metrics_from_trade_registry(registry)
+    result = evaluator.evaluate(m)
+
+    # Prune failed gates early to speed up the search
+    if not result.passed:
+        raise optuna.exceptions.TrialPruned(','.join(result.reasons))
+
+    # Maximize composite score in [0,1]
+    return result.score
+
+study = optuna.create_study(direction='maximize')
+study.optimize(objective, n_trials=200)
+print('Best trial score:', study.best_trial.value)
+print('Best params:', study.best_trial.params)
+```
+
+This approach scores and classifies each trial consistently, prunes weak candidates, and focuses the search on robust, risk-adjusted performance.
+
 Notes:
 - The exact Engine API and registry summary keys may differ based on your backtester implementation. Adjust backtest_settings and metric accordingly.

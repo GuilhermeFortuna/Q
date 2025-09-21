@@ -21,6 +21,14 @@ from .engine import Engine, BacktestParameters
 # Trade management and analysis
 from .trades import TradeOrder, TradeRegistry
 
+# Evaluation utilities
+from .evaluation import (
+    AcceptanceCriteria,
+    StrategyEvaluator,
+    metrics_from_trade_registry,
+    oos_stability_from_two_runs,
+)
+
 # Utilities and constants
 from .utils import TIMEFRAMES, TimeframeInfo
 
@@ -44,6 +52,11 @@ __all__ = [
     # Trade classes
     "TradeOrder",
     "TradeRegistry",
+    # Evaluation utilities
+    "AcceptanceCriteria",
+    "StrategyEvaluator",
+    "metrics_from_trade_registry",
+    "oos_stability_from_two_runs",
     # Utilities
     "TIMEFRAMES",
     "TimeframeInfo",
@@ -64,6 +77,11 @@ def get_package_info():
             'strategy_classes': ['TradingStrategy'],
             'engine_classes': ['Engine', 'BacktestParameters'],
             'trade_classes': ['TradeOrder', 'TradeRegistry'],
+            'evaluation': [
+                'AcceptanceCriteria',
+                'StrategyEvaluator',
+                'metrics_from_trade_registry',
+            ],
             'utilities': ['TIMEFRAMES', 'MARKET_DATA_LAYOUT', 'TimeframeInfo'],
         },
         'key_features': [
@@ -74,6 +92,7 @@ def get_package_info():
             'Built-in technical indicators',
             'Trade registry with tax calculations',
             'Progress tracking and visualization',
+            'Objective evaluator for ranking and gating strategies',
         ],
     }
 

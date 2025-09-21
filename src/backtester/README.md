@@ -219,6 +219,53 @@ The `TradeRegistry` calculates:
 - **Trade Statistics**: Total/positive/negative trade counts
 - **Time Analysis**: Duration, monthly results, average monthly performance
 
+## Automated Strategy Evaluation (Gate + Score)
+
+Use `backtester.evaluation` to encode what “acceptable” means and to rank strategies consistently.
+
+- Acceptance gate: fast hard rules to reject weak/fragile runs (e.g., min trades, max drawdown, min PF).
+- Composite score: normalized 0..1 score combining profit factor, drawdown, Sharpe, CAGR, trade count, etc.
+- Labeling: A/B/C for accepted runs, REJECT for failed gates.
+
+Example:
+
+```python
+from src.backtester import (
+    Engine, BacktestParameters, CandleData,
+    AcceptanceCriteria, StrategyEvaluator, metrics_from_trade_registry,
+)
+
+# 1) Prepare data and engine
+data = CandleData(symbol="TEST", timeframe="15min")
+# data.data = <OHLCV DataFrame with datetime index>
+params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+engine = Engine(parameters=params, strategy=my_strategy, data={"candle": data})
+reg = engine.run_backtest(display_progress=False)
+
+# 2) Evaluate
+criteria = AcceptanceCriteria(
+    min_trades=200, min_profit_factor=1.3, max_drawdown=0.20, min_sharpe=1.0
+)
+evaluator = StrategyEvaluator(criteria)
+metrics = metrics_from_trade_registry(reg)
+result = evaluator.evaluate(metrics)
+print(result.label, result.score, result.reasons)
+```
+
+Out-of-sample stability (optional): run the strategy on IS/OOS splits and penalize instability via `oos_stability` in metrics. A helper is available:
+
+```python
+from src.backtester.evaluation import oos_stability_from_two_runs
+m_is = metrics_from_trade_registry(reg_is)
+m_oos = metrics_from_trade_registry(reg_oos)
+stability = oos_stability_from_two_runs(reg_is, reg_oos, evaluator)
+# Inject and re-evaluate
+m_is["oos_stability"] = stability
+result = evaluator.evaluate(m_is)
+```
+
+Integration with Optuna: optimize to maximize `result.score` and prune trials that fail the gate (see optimizer README for a sketch).
+
 ## Roadmap
 
 - [ ] Multiprocessing support for distributed backtesting
