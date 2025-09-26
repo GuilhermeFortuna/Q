@@ -8,6 +8,7 @@ import MetaTrader5 as mt5
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from src.helper import PrintMessage
 
 
 class MarketData(ABC):
@@ -21,13 +22,25 @@ class MarketData(ABC):
         self.symbol = symbol
         self.data = data
 
-    @abstractmethod
-    def store_data(self) -> None:
+    @staticmethod
+    def load_data() -> pd.DataFrame | None:
         pass
 
-    @abstractmethod
-    def load_data(self) -> Optional[pd.DataFrame]:
-        pass
+    @staticmethod
+    def store_data(data: pd.DataFrame, path: str) -> None:
+        file_type = path.split('.')[-1].lower()
+        match (file_type, isinstance(data, pd.DataFrame)):
+            case ('csv', True):
+                data.to_csv(path, index=True)
+            case ('parquet', True):
+                data.to_parquet(path, index=True)
+            case (_, False):
+                raise TypeError('data must be a pandas DataFrame.')
+            case _:
+                raise ValueError(
+                    f'Unsupported file type: {file_type}. Supported types are csv and parquet.'
+                )
+        PrintMessage['SUCCESS'](f'Successfully saved data to: {path}')
 
     @staticmethod
     def connect_to_mt5(attempts: int = 3, wait: int = 2) -> bool:
@@ -73,9 +86,6 @@ class CandleData(MarketData):
 
         self.timeframe = timeframe
 
-    def store_data(self) -> None:
-        pass
-
     def load_data(self) -> None:
         pass
 
@@ -114,7 +124,9 @@ class CandleData(MarketData):
                     else df['tick_volume'].copy()
                 )
 
-            df.drop(columns=['time', 'spread'], inplace=True)
+            df.drop(
+                columns=['time', 'spread', 'real_volume', 'tick_volume'], inplace=True
+            )
             return df
 
         else:
@@ -124,8 +136,9 @@ class CandleData(MarketData):
     def import_from_mt5(
         mt5_symbol: str,
         timeframe: str,
-        date_from: dt.datetime,
-        date_to: dt.datetime,
+        date_from: Optional[dt.datetime] = None,
+        date_to: Optional[dt.datetime] = None,
+        num_candles: Optional[int] = None,
         use_tick_volume: Optional[bool] = False,
     ):
         error_message = f'Error importing data for symbol {mt5_symbol} from MT5.: {mt5.last_error()}'
@@ -136,21 +149,37 @@ class CandleData(MarketData):
 
         # Initialize connection to mt5 terminal with default credentials
         mt5.initialize()
+        df = pd.DataFrame()
 
-        try:
-            df = CandleData.format_candle_data_from_mt5(
-                data=mt5.copy_rates_range(
-                    mt5_symbol, TIMEFRAMES[timeframe].mt5, date_from, date_to
+        if num_candles:
+            try:
+                df = CandleData.format_candle_data_from_mt5(
+                    data=mt5.copy_rates_from_pos(
+                        mt5_symbol, TIMEFRAMES[timeframe].mt5, 0, num_candles
+                    )
                 )
-            )
-        except:
-            print(f'Error importing data for symbol {mt5_symbol} from MT5.')
-            df = pd.DataFrame()
+            except Exception as e:
+                PrintMessage['ERROR'](str(e))
 
-        finally:
-            if df.empty:
-                print(error_message)
-            mt5.shutdown()
+            finally:
+                if df.empty:
+                    print(error_message)
+                mt5.shutdown()
+
+        else:
+            try:
+                df = CandleData.format_candle_data_from_mt5(
+                    data=mt5.copy_rates_range(
+                        mt5_symbol, TIMEFRAMES[timeframe].mt5, date_from, date_to
+                    )
+                )
+            except:
+                print(f'Error importing data for symbol {mt5_symbol} from MT5.')
+
+            finally:
+                if df.empty:
+                    print(error_message)
+                mt5.shutdown()
 
         return df
 
@@ -284,6 +313,17 @@ class TickData(MarketData):
             df = import_ticks(mt5_symbol, date_from, date_to)
             mt5.shutdown()
             return df
+
+
+def validate_mt5_symbol(symbol: str) -> bool:
+    return True
+
+
+def get_mt5_symbol(symbol: str):
+    raw_symbol = symbol.upper()
+    pass
+    # TODO: implement
+    return raw_symbol
 
 
 if __name__ == '__main__':
