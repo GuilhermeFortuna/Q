@@ -9,9 +9,6 @@ historical price data with flexible strategy definitions, multiple data sources,
 and detailed performance analysis.
 """
 
-# Core data handling
-from .data import MarketData, CandleData, TickData
-
 # Strategy framework
 from .strategy import TradingStrategy
 
@@ -40,10 +37,6 @@ __description__ = "Backtesting engine for trading strategies"
 
 # Define what gets imported with "from backtester import *"
 __all__ = [
-    # Data classes
-    "MarketData",
-    "CandleData",
-    "TickData",
     # Strategy interface
     "TradingStrategy",
     # Engine classes

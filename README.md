@@ -133,17 +133,18 @@ python scripts\backtest\composites\momentum_rider_test.py
 Example: Run MA crossover backtest and show summary in one script:
 
 ```python
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.backtester.engine import BacktestParameters, Engine
 from src.strategies.swingtrade import MaCrossover
 from src.visualizer import show_backtest_summary
 
+
 # Prepare data (replace with your own loader if not using MT5)
-candles = CandleData(symbol="DOL$", timeframe="5min")
+candles = CandleData( symbol="DOL$", timeframe="5min" )
 # candles.data = <your DataFrame with columns open, high, low, close, volume and datetime index>
 
 # Configure and run backtest
-params = BacktestParameters(point_value=10.0, cost_per_trade=2.50)
+params = BacktestParameters( point_value=10.0, cost_per_trade=2.50 )
 strategy = MaCrossover(
     tick_value=0.5,
     short_ma_func="ema",
@@ -153,16 +154,16 @@ strategy = MaCrossover(
     delta_tick_factor=1,
     always_active=True,
 )
-engine = Engine(parameters=params, strategy=strategy, data=dict(candle=candles))
-trade_registry = engine.run_backtest(display_progress=True)
+engine = Engine( parameters=params, strategy=strategy, data=dict( candle=candles ) )
+trade_registry = engine.run_backtest( display_progress=True )
 result = trade_registry.get_result()
 
 # Show interactive summary
 if result is not None:
     ohlc_df = candles.data.copy()
     if 'time' not in ohlc_df.columns:
-        ohlc_df.insert(0, 'time', list(range(len(ohlc_df))))
-    show_backtest_summary(trade_registry, ohlc_df=ohlc_df)
+        ohlc_df.insert( 0, 'time', list( range( len( ohlc_df ) ) ) )
+    show_backtest_summary( trade_registry, ohlc_df=ohlc_df )
 ```
 
 Example: Plot a candlestick chart with an EMA indicator:
@@ -195,20 +196,21 @@ Example: Run a composite strategy programmatically:
 
 ```python
 from src.backtester.engine import BacktestParameters, Engine
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.strategies.archetypes import create_momentum_rider_strategy
 
-candles = CandleData(symbol="WDO", timeframe="15min")
+
+candles = CandleData( symbol="WDO", timeframe="15min" )
 # candles.data = <your OHLCV DataFrame>
 
-params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+params = BacktestParameters( point_value=10.0, cost_per_trade=1.0 )
 strategy = create_momentum_rider_strategy()  # returns a CompositeStrategy
-engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
-registry = engine.run_backtest(display_progress=True)
+engine = Engine( parameters=params, strategy=strategy, data={"candle": candles} )
+registry = engine.run_backtest( display_progress=True )
 result = registry.get_result()
 
 # Each trade row includes 'entry_info'/'exit_info' with labeled signal decisions
-print(registry.trades[["type", "entry_info", "exit_info"]].head())
+print( registry.trades[["type", "entry_info", "exit_info"]].head() )
 ```
 
 Note: Composite strategies attach per-candle signal decisions to TradeOrder.info. The backtester persists these into TradeRegistry.trades as entry_info/exit_info, enabling post-trade analysis (e.g., which signals contributed and with what strengths).

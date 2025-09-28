@@ -8,7 +8,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from src.backtester.data import MarketData, CandleData, TickData
+from src.data import MarketData, CandleData, TickData
 from src.backtester.strategy import TradingStrategy
 from src.backtester.trades import TradeRegistry, TradeOrder
 from src.bridge import data_manager
