@@ -66,7 +66,6 @@ def get_package_info():
         'version': __version__,
         'description': __description__,
         'components': {
-            'data_classes': ['MarketData', 'CandleData', 'TickData'],
             'strategy_classes': ['TradingStrategy'],
             'engine_classes': ['Engine', 'BacktestParameters'],
             'trade_classes': ['TradeOrder', 'TradeRegistry'],
@@ -95,15 +94,9 @@ def _validate_package():
     """Internal function to validate package components on import."""
     try:
         # Test core imports
-        assert MarketData is not None
-        assert CandleData is not None
         assert TradingStrategy is not None
         assert Engine is not None
         assert TradeOrder is not None
-
-        # Validate key relationships
-        assert issubclass(CandleData, MarketData)
-        assert issubclass(TickData, MarketData)
 
         return True
     except (AssertionError, ImportError) as e:
