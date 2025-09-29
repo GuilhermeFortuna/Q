@@ -19,6 +19,7 @@ class TradeOrder:
     comment: str = ''
     amount: Optional[int] = None
     slippage: Optional[float] = None
+    info: Optional[dict] = None
 
     def __post_init__(self):
         if not isinstance(self.type, str):
@@ -38,6 +39,9 @@ class TradeOrder:
 
         if self.slippage is not None and not isinstance(self.slippage, float):
             raise TypeError("'slippage' must be a float if specified.")
+
+        if self.info is not None and not isinstance(self.info, dict):
+            raise TypeError("'info' must be a dict if specified.")
 
 
 class TradeRegistry:
@@ -73,6 +77,8 @@ class TradeRegistry:
                 'balance',
                 'entry_comment',
                 'exit_comment',
+                'entry_info',
+                'exit_info',
             ],
         )
         self.order_history = OrderedDict({})
@@ -336,6 +342,7 @@ class TradeRegistry:
         self.trades.at[index, 'start'] = order.datetime
         self.trades.at[index, 'entry_comment'] = order.comment
         self.trades.at[index, 'amount'] = order.amount
+        self.trades.at[index, 'entry_info'] = order.info
 
     def _sell(self, order: TradeOrder) -> None:
         '''
@@ -354,6 +361,7 @@ class TradeRegistry:
         self.trades.at[index, 'start'] = order.datetime
         self.trades.at[index, 'entry_comment'] = order.comment
         self.trades.at[index, 'amount'] = order.amount
+        self.trades.at[index, 'entry_info'] = order.info
 
     def _close_position(
         self,
@@ -439,6 +447,8 @@ class TradeRegistry:
                     comment=order.comment,
                     slippage=order.slippage,
                 )
+                # Store exit info for the closed trade
+                self.trades.at[self._last_trade_index, 'exit_info'] = order.info
 
         # Invert position.
         elif order.type == 'invert':
@@ -456,6 +466,8 @@ class TradeRegistry:
                         comment=order.comment,
                         slippage=order.slippage,
                     )
+                    # Store exit info for the closed trade
+                    self.trades.at[self._last_trade_index, 'exit_info'] = order.info
                     self._sell(order)
 
                 elif trade_info['type'] == 'sell':
@@ -465,6 +477,8 @@ class TradeRegistry:
                         comment=order.comment,
                         slippage=order.slippage,
                     )
+                    # Store exit info for the closed trade
+                    self.trades.at[self._last_trade_index, 'exit_info'] = order.info
                     self._buy(order)
 
         # Invalid order type.

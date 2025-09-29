@@ -9,9 +9,6 @@ historical price data with flexible strategy definitions, multiple data sources,
 and detailed performance analysis.
 """
 
-# Core data handling
-from .data import MarketData, CandleData, TickData
-
 # Strategy framework
 from .strategy import TradingStrategy
 
@@ -20,6 +17,14 @@ from .engine import Engine, BacktestParameters
 
 # Trade management and analysis
 from .trades import TradeOrder, TradeRegistry
+
+# Evaluation utilities
+from .evaluation import (
+    AcceptanceCriteria,
+    StrategyEvaluator,
+    metrics_from_trade_registry,
+    oos_stability_from_two_runs,
+)
 
 # Utilities and constants
 from .utils import TIMEFRAMES, TimeframeInfo
@@ -32,10 +37,6 @@ __description__ = "Backtesting engine for trading strategies"
 
 # Define what gets imported with "from backtester import *"
 __all__ = [
-    # Data classes
-    "MarketData",
-    "CandleData",
-    "TickData",
     # Strategy interface
     "TradingStrategy",
     # Engine classes
@@ -44,6 +45,11 @@ __all__ = [
     # Trade classes
     "TradeOrder",
     "TradeRegistry",
+    # Evaluation utilities
+    "AcceptanceCriteria",
+    "StrategyEvaluator",
+    "metrics_from_trade_registry",
+    "oos_stability_from_two_runs",
     # Utilities
     "TIMEFRAMES",
     "TimeframeInfo",
@@ -60,10 +66,14 @@ def get_package_info():
         'version': __version__,
         'description': __description__,
         'components': {
-            'data_classes': ['MarketData', 'CandleData', 'TickData'],
             'strategy_classes': ['TradingStrategy'],
             'engine_classes': ['Engine', 'BacktestParameters'],
             'trade_classes': ['TradeOrder', 'TradeRegistry'],
+            'evaluation': [
+                'AcceptanceCriteria',
+                'StrategyEvaluator',
+                'metrics_from_trade_registry',
+            ],
             'utilities': ['TIMEFRAMES', 'MARKET_DATA_LAYOUT', 'TimeframeInfo'],
         },
         'key_features': [
@@ -74,6 +84,7 @@ def get_package_info():
             'Built-in technical indicators',
             'Trade registry with tax calculations',
             'Progress tracking and visualization',
+            'Objective evaluator for ranking and gating strategies',
         ],
     }
 
@@ -83,15 +94,9 @@ def _validate_package():
     """Internal function to validate package components on import."""
     try:
         # Test core imports
-        assert MarketData is not None
-        assert CandleData is not None
         assert TradingStrategy is not None
         assert Engine is not None
         assert TradeOrder is not None
-
-        # Validate key relationships
-        assert issubclass(CandleData, MarketData)
-        assert issubclass(TickData, MarketData)
 
         return True
     except (AssertionError, ImportError) as e:

@@ -70,11 +70,13 @@ Trade management and performance analysis:
 - **`TradeOrder`**: Represents individual trade orders with:
   - Type: 'buy', 'sell', 'close', 'invert'
   - Price, datetime, amount, slippage, comments
+  - New: optional `info: dict | None` — used by composite strategies to attach contextual info (e.g., labeled signal decisions per entry/exit check)
 - **`TradeRegistry`**: Comprehensive trade tracking and analysis
   - Real-time position management
   - Performance metrics: profit factor, accuracy, drawdown
   - Monthly result computation with tax calculations
   - Brazilian tax rates: 15% swing trade, 20% day trade
+  - New DataFrame columns `entry_info` and `exit_info` — persist the `TradeOrder.info` payloads for the orders that opened/closed/inverted a position
 
 ### 5. Utils (`utils.py`)
 
@@ -135,13 +137,14 @@ Expected columns: `datetime`, `open`, `high`, `low`, `close`, `volume`
 ## Usage Example
 
 ```python
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.strategies.swingtrade.ma_crossover import MaCrossover
 from src.backtester.engine import Engine, BacktestParameters
 
+
 # Load data
-candles = CandleData(symbol='MSFT', timeframe='60min')
-candles.data = CandleData.import_from_csv('path/to/data.csv')
+candles = CandleData( symbol='MSFT', timeframe='60min' )
+candles.data = CandleData.import_from_csv( 'path/to/data.csv' )
 
 # Configure strategy
 strategy = MaCrossover(
@@ -155,14 +158,41 @@ strategy = MaCrossover(
 )
 
 # Set up engine
-params = BacktestParameters(point_value=450.00, cost_per_trade=2.50)
-engine = Engine(parameters=params, strategy=strategy, data={'candle': candles})
+params = BacktestParameters( point_value=450.00, cost_per_trade=2.50 )
+engine = Engine( parameters=params, strategy=strategy, data={'candle': candles} )
 
 # Run backtest
-results = engine.run_backtest(display_progress=True)
+results = engine.run_backtest( display_progress=True )
 performance = results.get_result()
 ```
 
+### Reading decision labels from trades
+
+```python
+from src.data.data import CandleData
+from src.backtester.engine import BacktestParameters, Engine
+from src.strategies.archetypes import create_momentum_rider_strategy
+
+
+# Minimal setup
+candles = CandleData( symbol="WDO", timeframe="15min" )
+# candles.data = <your OHLCV DataFrame>
+params = BacktestParameters( point_value=10.0, cost_per_trade=1.0 )
+strategy = create_momentum_rider_strategy()
+engine = Engine( parameters=params, strategy=strategy, data={"candle": candles} )
+results = engine.run_backtest( display_progress=False )
+
+# After the backtest
+trades = results.trades  # TradeRegistry DataFrame
+for i, row in trades.iterrows():
+    entry_meta = row.get( "entry_info" ) if hasattr( row, "get" ) else row["entry_info"]
+    decisions = (entry_meta or {}).get( "decisions", [] ) if isinstance( entry_meta, dict ) else []
+    print( f"Trade #{i + 1} type={row['type']}:" )
+    for d in decisions:
+        print( f"  - {d.get( 'label' )}: {d.get( 'side' )} (strength={float( d.get( 'strength', 0.0 ) ):.2f})" )
+```
+
+See `scripts\backtest\composites\` for examples that print this analysis.
 
 ## CLI Examples
 
@@ -190,6 +220,53 @@ The `TradeRegistry` calculates:
 - **Risk**: Maximum drawdown (absolute and relative)
 - **Trade Statistics**: Total/positive/negative trade counts
 - **Time Analysis**: Duration, monthly results, average monthly performance
+
+## Automated Strategy Evaluation (Gate + Score)
+
+Use `backtester.evaluation` to encode what “acceptable” means and to rank strategies consistently.
+
+- Acceptance gate: fast hard rules to reject weak/fragile runs (e.g., min trades, max drawdown, min PF).
+- Composite score: normalized 0..1 score combining profit factor, drawdown, Sharpe, CAGR, trade count, etc.
+- Labeling: A/B/C for accepted runs, REJECT for failed gates.
+
+Example:
+
+```python
+from src.backtester import (
+    Engine, BacktestParameters, CandleData,
+    AcceptanceCriteria, StrategyEvaluator, metrics_from_trade_registry,
+)
+
+# 1) Prepare data and engine
+data = CandleData(symbol="TEST", timeframe="15min")
+# data.data = <OHLCV DataFrame with datetime index>
+params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+engine = Engine(parameters=params, strategy=my_strategy, data={"candle": data})
+reg = engine.run_backtest(display_progress=False)
+
+# 2) Evaluate
+criteria = AcceptanceCriteria(
+    min_trades=200, min_profit_factor=1.3, max_drawdown=0.20, min_sharpe=1.0
+)
+evaluator = StrategyEvaluator(criteria)
+metrics = metrics_from_trade_registry(reg)
+result = evaluator.evaluate(metrics)
+print(result.label, result.score, result.reasons)
+```
+
+Out-of-sample stability (optional): run the strategy on IS/OOS splits and penalize instability via `oos_stability` in metrics. A helper is available:
+
+```python
+from src.backtester.evaluation import oos_stability_from_two_runs
+m_is = metrics_from_trade_registry(reg_is)
+m_oos = metrics_from_trade_registry(reg_oos)
+stability = oos_stability_from_two_runs(reg_is, reg_oos, evaluator)
+# Inject and re-evaluate
+m_is["oos_stability"] = stability
+result = evaluator.evaluate(m_is)
+```
+
+Integration with Optuna: optimize to maximize `result.score` and prune trials that fail the gate (see optimizer README for a sketch).
 
 ## Roadmap
 

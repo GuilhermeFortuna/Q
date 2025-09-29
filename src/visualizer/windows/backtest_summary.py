@@ -700,6 +700,9 @@ def show_backtest_summary(
     Returns:
         BacktestSummaryWindow instance
     """
+    if results is None:
+        raise ValueError("\nBacktest results are empty...\n")
+
     app = QApplication.instance()
     created_app = False
     if app is None:

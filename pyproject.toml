@@ -19,6 +19,10 @@ dependencies = [
     "docutils>=0.22",
     "pandas-ta==0.3.14b0",
     "coverage>=7.10.6",
+    "pytest>=8.4.2",
+    "optuna-dashboard>=0.14.0",
+    "psycopg2-binary>=2.9.9",
+    "pyarrow>=21.0.0",
 ]
 
 [tool.black]
