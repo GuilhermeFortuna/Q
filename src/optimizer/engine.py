@@ -1,6 +1,8 @@
-import optuna
 from typing import Type, Dict, Any
-from src.backtester.engine import Engine
+
+import optuna
+
+from src.backtester.engine import Engine, BacktestParameters
 from src.backtester.strategy import TradingStrategy
 
 
@@ -13,7 +15,7 @@ class Optimizer:
         self,
         strategy_class: Type[TradingStrategy],
         config: Dict[str, Any],
-        backtest_settings: Dict[str, Any],
+        backtest_config: BacktestParameters,
     ):
         """
         Initializes the Optimizer.
@@ -25,11 +27,11 @@ class Optimizer:
                     - 'n_trials': The number of optimization trials to run.
                     - 'metric': The performance metric to optimize (e.g., 'total_profit').
                     - 'direction': The optimization direction ('maximize' or 'minimize').
-            backtest_settings: A dictionary with settings for the backtester engine.
+            backtest_config: A dictionary with settings for the backtester engine.
         """
         self.strategy_class = strategy_class
         self.config = config
-        self.backtest_settings = backtest_settings
+        self.backtest_config = backtest_config
         self.param_space = self.config['parameters']
         self.n_trials = self.config.get('n_trials', 100)
         self.metric = self.config.get('metric', 'total_profit')
@@ -47,7 +49,7 @@ class Optimizer:
 
         # Assumption: The backtester.engine.Engine is initialized with a strategy
         # instance and backtest settings.
-        engine = Engine(strategy_instance, **self.backtest_settings)
+        engine = Engine(strategy=strategy_instance, **self.backtest_config)
 
         # Assumption: The run() method executes the backtest and returns a
         # registry object that holds the results.

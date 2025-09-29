@@ -47,6 +47,7 @@ config = {
 from src.optimizer.engine import Optimizer
 from src.strategies.swingtrade.ma_crossover import MaCrossover
 
+
 backtest_settings = {
     # Engine kwargs as used in your backtester.Engine
 }
@@ -54,10 +55,10 @@ backtest_settings = {
 opt = Optimizer(
     strategy_class=MaCrossover,
     config=config,
-    backtest_settings=backtest_settings,
+    backtest_config=backtest_settings,
 )
 study = opt.run()
-print("Best params:", study.best_trial.params)
+print( "Best params:", study.best_trial.params )
 ```
 
 ## Using the evaluator (gate + score) in Optuna
