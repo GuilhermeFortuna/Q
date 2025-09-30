@@ -637,7 +637,12 @@ class TradeRegistry:
         if return_df:
             return month_result
 
-    def get_result(self, force_process_trades: bool = False) -> Union[dict, None]:
+    def get_result(
+        self,
+        force_process_trades: bool = False,
+        silent_mode: bool = False,
+        return_result: bool = False,
+    ) -> Union[dict, None]:
         '''
         Get compiled result.
 
@@ -687,14 +692,16 @@ class TradeRegistry:
             'average_monthly_result (BRL)': monthly_result['profit'].mean(),
         }
 
-        print('\n\n--- Results ---\n')
-        for metric, value in self.result.items():
-            if isinstance(value, (dt.datetime, dt.timedelta)):
-                print(f'{metric}:'.ljust(30), f'{value}'.rjust(25))
-            else:
-                print(f'{metric}:'.ljust(30), f'{round(value, 2)}'.rjust(25))
+        if not silent_mode:
+            print('\n\n--- Results ---\n')
+            for metric, value in self.result.items():
+                if isinstance(value, (dt.datetime, dt.timedelta)):
+                    print(f'{metric}:'.ljust(30), f'{value}'.rjust(25))
+                else:
+                    print(f'{metric}:'.ljust(30), f'{round(value, 2)}'.rjust(25))
 
-        return self.result
+        if return_result:
+            return self.result
 
 
 if __name__ == '__main__':

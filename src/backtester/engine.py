@@ -69,11 +69,11 @@ class EngineData(ABC):
 
         if not issubclass(data_obj.__class__, MarketData):
             raise TypeError('data must be an instance of a subclass of MarketData.')
-        elif data_obj.data is None or not isinstance(data_obj.data, pd.DataFrame):
+        elif data_obj.df is None or not isinstance(data_obj.df, pd.DataFrame):
             raise ValueError('data must be a pandas DataFrame.')
 
         self.symbol = data_obj.symbol
-        self.data = data_obj.data
+        self.data = data_obj.df
         self._dtype_map = []
 
     @property
