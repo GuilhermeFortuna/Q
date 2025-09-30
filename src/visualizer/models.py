@@ -33,7 +33,7 @@ class BacktestResultModel:
             self._result = self._extract_result_from_registry(registry)
             self._trades_df = self._extract_trades_from_registry(registry)
         else:
-            self._result = result or {}
+            self._result = result or registry.result or {}
             self._trades_df = trades_df
 
         # Store OHLC data with proper validation
@@ -55,10 +55,13 @@ class BacktestResultModel:
 
     def _extract_result_from_registry(self, registry: Any) -> Dict[str, Any]:
         """Extract result dict from registry instance."""
-        if hasattr(registry, 'get_result'):
-            return registry.get_result()
-        elif hasattr(registry, 'result'):
+        if hasattr(registry, 'result') and registry.result is not None:
             return registry.result
+        else:
+            result = registry.get_result(return_result=True, silent_mode=True)
+            if isinstance(result, dict):
+                return result
+
         return {}
 
     def _extract_trades_from_registry(self, registry: Any) -> Optional[pd.DataFrame]:
