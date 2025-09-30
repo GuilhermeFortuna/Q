@@ -137,13 +137,14 @@ Expected columns: `datetime`, `open`, `high`, `low`, `close`, `volume`
 ## Usage Example
 
 ```python
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.strategies.swingtrade.ma_crossover import MaCrossover
 from src.backtester.engine import Engine, BacktestParameters
 
+
 # Load data
-candles = CandleData(symbol='MSFT', timeframe='60min')
-candles.data = CandleData.import_from_csv('path/to/data.csv')
+candles = CandleData( symbol='MSFT', timeframe='60min' )
+candles.data = CandleData.import_from_csv( 'path/to/data.csv' )
 
 # Configure strategy
 strategy = MaCrossover(
@@ -157,37 +158,38 @@ strategy = MaCrossover(
 )
 
 # Set up engine
-params = BacktestParameters(point_value=450.00, cost_per_trade=2.50)
-engine = Engine(parameters=params, strategy=strategy, data={'candle': candles})
+params = BacktestParameters( point_value=450.00, cost_per_trade=2.50 )
+engine = Engine( parameters=params, strategy=strategy, data={'candle': candles} )
 
 # Run backtest
-results = engine.run_backtest(display_progress=True)
+results = engine.run_backtest( display_progress=True )
 performance = results.get_result()
 ```
 
 ### Reading decision labels from trades
 
 ```python
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.backtester.engine import BacktestParameters, Engine
 from src.strategies.archetypes import create_momentum_rider_strategy
 
+
 # Minimal setup
-candles = CandleData(symbol="WDO", timeframe="15min")
+candles = CandleData( symbol="WDO", timeframe="15min" )
 # candles.data = <your OHLCV DataFrame>
-params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+params = BacktestParameters( point_value=10.0, cost_per_trade=1.0 )
 strategy = create_momentum_rider_strategy()
-engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
-results = engine.run_backtest(display_progress=False)
+engine = Engine( parameters=params, strategy=strategy, data={"candle": candles} )
+results = engine.run_backtest( display_progress=False )
 
 # After the backtest
 trades = results.trades  # TradeRegistry DataFrame
 for i, row in trades.iterrows():
-    entry_meta = row.get("entry_info") if hasattr(row, "get") else row["entry_info"]
-    decisions = (entry_meta or {}).get("decisions", []) if isinstance(entry_meta, dict) else []
-    print(f"Trade #{i+1} type={row['type']}:")
+    entry_meta = row.get( "entry_info" ) if hasattr( row, "get" ) else row["entry_info"]
+    decisions = (entry_meta or {}).get( "decisions", [] ) if isinstance( entry_meta, dict ) else []
+    print( f"Trade #{i + 1} type={row['type']}:" )
     for d in decisions:
-        print(f"  - {d.get('label')}: {d.get('side')} (strength={float(d.get('strength', 0.0)):.2f})")
+        print( f"  - {d.get( 'label' )}: {d.get( 'side' )} (strength={float( d.get( 'strength', 0.0 ) ):.2f})" )
 ```
 
 See `scripts\backtest\composites\` for examples that print this analysis.

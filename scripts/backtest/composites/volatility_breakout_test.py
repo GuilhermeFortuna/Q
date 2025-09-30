@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.backtester.engine import BacktestParameters, Engine
 from src.backtester.trades import TradeRegistry
 from src.strategies.archetypes import create_volatility_breakout_strategy
@@ -67,7 +67,11 @@ for idx, row in trades_df.iterrows():
             d_side = d.get('side') or 'neutral'
             d_strength = float(d.get('strength', 0.0) or 0.0)
         else:
-            label = getattr(d, 'name', None) or getattr(d, 'source', None) or d.__class__.__name__
+            label = (
+                getattr(d, 'name', None)
+                or getattr(d, 'source', None)
+                or d.__class__.__name__
+            )
             d_side = getattr(d, 'side', None) or 'neutral'
             d_strength = float(getattr(d, 'strength', 0.0) or 0.0)
         print(f"          - {label}: {d_side} (strength: {d_strength:.2f})")

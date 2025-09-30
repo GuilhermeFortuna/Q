@@ -2,13 +2,13 @@ import datetime as dt
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import wraps
-from typing import Generator
-from typing import Optional
+from typing import Generator, Optional, TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 
-from src.backtester.data import MarketData, CandleData, TickData
+if TYPE_CHECKING:
+    from src.data import MarketData, CandleData, TickData
 from src.backtester.strategy import TradingStrategy
 from src.backtester.trades import TradeRegistry, TradeOrder
 from src.bridge import data_manager
@@ -64,7 +64,9 @@ class EngineDataChunk:
 
 
 class EngineData(ABC):
-    def __init__(self, data_obj: MarketData):
+    def __init__(self, data_obj: "MarketData"):
+        from src.data import MarketData
+
         if not issubclass(data_obj.__class__, MarketData):
             raise TypeError('data must be an instance of a subclass of MarketData.')
         elif data_obj.data is None or not isinstance(data_obj.data, pd.DataFrame):
@@ -105,13 +107,12 @@ class EngineData(ABC):
 class EngineCandleData(EngineData):
     NAME = 'candle'
 
-    def __init__(self, data_obj: CandleData):
+    def __init__(self, data_obj: "CandleData"):
+        from src.data import CandleData
+
         super().__init__(data_obj=data_obj)
         self.timeframe = data_obj.timeframe
         # Always include datetime field explicitly; assume timeline is the index
-        self.dtype_map = [('datetime', 'int64')] + [
-            (col, 'float64') for col in self.data.columns
-        ]
 
     def set_values_as_attrs(self) -> None:
         # Ensure sorted timeline and standardized pandas.DatetimeIndex
@@ -136,27 +137,22 @@ class EngineCandleData(EngineData):
             setattr(self, col, self.data[col].to_numpy())
 
     def compartmentalize(self) -> Generator:
+        from src.data import CandleData
+
         if self.data is None:
             raise ValueError(
                 'No data to compartmentalize. Load data to OHLCData.data first.'
             )
 
-        for dt_val, data in self.data.groupby(self.data.index.date):
-            inst = self.__class__(
-                CandleData(symbol=self.symbol, timeframe=self.timeframe, data=data)
-            )
-            yield inst
-
 
 class EngineTickData(EngineData):
     NAME = 'tick'
 
-    def __init__(self, data_obj: TickData):
+    def __init__(self, data_obj: "TickData"):
+        from src.data import TickData
+
         super().__init__(data_obj=data_obj)
-        self.dtype_map = [
-            (col, 'float64') if col != 'datetime' else (col, 'int64')
-            for col in self.data.columns
-        ]
+        self.dtype_map = [(col, 'float64') if col != 'datetime' else (col, 'int64')]
 
     def set_values_as_attrs(self) -> None:
         """Expose numpy arrays for hot path to avoid pandas overhead."""
@@ -215,7 +211,7 @@ class Engine:
         )
 
         # Handle data
-        if data == {}:
+        if not data:
             raise ValueError(
                 'Engine received empty data dictionary. Please provide data to run backtest.'
             )
@@ -230,7 +226,7 @@ class Engine:
             if isinstance(data_obj, EngineData):
                 self.data[name] = data_obj
             else:
-                self.data[name] = Engine.DATA_TYPES[name](data_obj)
+                self.data[name] = self.DATA_TYPES[name](data_obj)
 
     @staticmethod
     def manage_backtest_execution(func):

@@ -9,9 +9,6 @@ historical price data with flexible strategy definitions, multiple data sources,
 and detailed performance analysis.
 """
 
-# Core data handling
-from .data import MarketData, CandleData, TickData
-
 # Strategy framework
 from .strategy import TradingStrategy
 
@@ -40,10 +37,6 @@ __description__ = "Backtesting engine for trading strategies"
 
 # Define what gets imported with "from backtester import *"
 __all__ = [
-    # Data classes
-    "MarketData",
-    "CandleData",
-    "TickData",
     # Strategy interface
     "TradingStrategy",
     # Engine classes
@@ -73,7 +66,6 @@ def get_package_info():
         'version': __version__,
         'description': __description__,
         'components': {
-            'data_classes': ['MarketData', 'CandleData', 'TickData'],
             'strategy_classes': ['TradingStrategy'],
             'engine_classes': ['Engine', 'BacktestParameters'],
             'trade_classes': ['TradeOrder', 'TradeRegistry'],
@@ -102,15 +94,9 @@ def _validate_package():
     """Internal function to validate package components on import."""
     try:
         # Test core imports
-        assert MarketData is not None
-        assert CandleData is not None
         assert TradingStrategy is not None
         assert Engine is not None
         assert TradeOrder is not None
-
-        # Validate key relationships
-        assert issubclass(CandleData, MarketData)
-        assert issubclass(TickData, MarketData)
 
         return True
     except (AssertionError, ImportError) as e:

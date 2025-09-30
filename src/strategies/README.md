@@ -28,27 +28,29 @@ uv sync
 ## Examples
 
 1) Compose signals manually with a combiner
+
 ```python
 from src.backtester.engine import BacktestParameters, Engine
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.strategies.composite import CompositeStrategy
 from src.strategies.combiners import GatedCombiner
 from src.strategies.signals import (
     AdxDmiSignal, SupertrendFlipSignal, DonchianBreakoutSignal,
 )
 
-signals = [
-    AdxDmiSignal(length=14, adx_thresh=25.0),                 # filter
-    SupertrendFlipSignal(atr_length=10, atr_mult=3.0),        # filter
-    DonchianBreakoutSignal(breakout_len=20, pullback_len=5),  # entry
-]
-combiner = GatedCombiner(filter_indices=[0, 1], entry_indices=[2], require_all_filters=False)
-strategy = CompositeStrategy(signals=signals, combiner=combiner, always_active=True)
 
-candles = CandleData(symbol="WDO", timeframe="15min")
-params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
-engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
-registry = engine.run_backtest(display_progress=True)
+signals = [
+    AdxDmiSignal( length=14, adx_thresh=25.0 ),  # filter
+    SupertrendFlipSignal( atr_length=10, atr_mult=3.0 ),  # filter
+    DonchianBreakoutSignal( breakout_len=20, pullback_len=5 ),  # entry
+]
+combiner = GatedCombiner( filter_indices=[0, 1], entry_indices=[2], require_all_filters=False )
+strategy = CompositeStrategy( signals=signals, combiner=combiner, always_active=True )
+
+candles = CandleData( symbol="WDO", timeframe="15min" )
+params = BacktestParameters( point_value=10.0, cost_per_trade=1.0 )
+engine = Engine( parameters=params, strategy=strategy, data={"candle": candles} )
+registry = engine.run_backtest( display_progress=True )
 ```
 
 2) Use an archetype factory
@@ -58,22 +60,24 @@ strategy = create_range_fader_strategy()
 ```
 
 3) Access labeled decisions from trades
+
 ```python
 from src.backtester.engine import BacktestParameters, Engine
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.strategies.archetypes import create_momentum_rider_strategy
 
+
 # Minimal setup to obtain a TradeRegistry
-candles = CandleData(symbol="WDO", timeframe="15min")
+candles = CandleData( symbol="WDO", timeframe="15min" )
 # candles.data = <your OHLCV DataFrame>
-params = BacktestParameters(point_value=10.0, cost_per_trade=1.0)
+params = BacktestParameters( point_value=10.0, cost_per_trade=1.0 )
 strategy = create_momentum_rider_strategy()
-engine = Engine(parameters=params, strategy=strategy, data={"candle": candles})
-registry = engine.run_backtest(display_progress=False)
+engine = Engine( parameters=params, strategy=strategy, data={"candle": candles} )
+registry = engine.run_backtest( display_progress=False )
 
 # Each trade row includes labeled decisions at entry/exit
 trades = registry.trades
-print(trades[["type", "entry_info", "exit_info"]].head())
+print( trades[["type", "entry_info", "exit_info"]].head() )
 # Each *_info contains {'decisions': [{'label': 'SignalClass', 'side': 'long|short|None', 'strength': 0..1}, ...]}
 ```
 

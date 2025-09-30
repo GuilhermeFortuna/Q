@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from src.backtester.data import CandleData
+from src.data.data import CandleData
 from src.backtester.engine import BacktestParameters, Engine
 from src.backtester.trades import TradeRegistry
 from src.strategies.archetypes import create_range_fader_strategy
@@ -14,14 +14,16 @@ POINT_VALUE = 450.00
 COST_PER_TRADE = 2.50
 
 
-def run_backtest(mt5_symbol: str = MT5_SYMBOL,
-                 timeframe: str = TIMEFRAME,
-                 date_from: datetime = DATE_FROM,
-                 date_to: datetime = DATE_TO) -> tuple[TradeRegistry, CandleData]:
+def run_backtest(
+    mt5_symbol: str = MT5_SYMBOL,
+    timeframe: str = TIMEFRAME,
+    date_from: datetime = DATE_FROM,
+    date_to: datetime = DATE_TO,
+) -> tuple[TradeRegistry, CandleData]:
     candles = CandleData(symbol=mt5_symbol.replace('$', ''), timeframe=timeframe)
-    df = CandleData.import_from_mt5(mt5_symbol=mt5_symbol, timeframe=timeframe, date_from=date_from, date_to=date_to)[
-        ['open', 'high', 'low', 'close', 'real_volume']
-    ].copy()
+    df = CandleData.import_from_mt5(
+        mt5_symbol=mt5_symbol, timeframe=timeframe, date_from=date_from, date_to=date_to
+    )[['open', 'high', 'low', 'close', 'real_volume']].copy()
     df.rename(columns={'real_volume': 'volume'}, inplace=True)
     candles.data = df.loc[(df.index >= date_from) & (df.index <= date_to)].copy()
 
@@ -65,7 +67,11 @@ for idx, row in trades_df.iterrows():
             d_side = d.get('side') or 'neutral'
             d_strength = float(d.get('strength', 0.0) or 0.0)
         else:
-            label = getattr(d, 'name', None) or getattr(d, 'source', None) or d.__class__.__name__
+            label = (
+                getattr(d, 'name', None)
+                or getattr(d, 'source', None)
+                or d.__class__.__name__
+            )
             d_side = getattr(d, 'side', None) or 'neutral'
             d_strength = float(getattr(d, 'strength', 0.0) or 0.0)
         print(f"          - {label}: {d_side} (strength: {d_strength:.2f})")

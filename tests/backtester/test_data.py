@@ -2,9 +2,7 @@
 Tests for the backtester data module.
 """
 
-import pytest
-import pandas as pd
-from src.backtester.data import *
+from src.data.data import *
 
 
 class TestDataHandling:
