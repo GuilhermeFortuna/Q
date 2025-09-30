@@ -303,7 +303,7 @@ class BacktestSummaryWindow(QMainWindow):
     """Enhanced backtest summary window with KPIs, charts, and actions."""
 
     def __init__(
-        self, results: Any, ohlc_df=None, parent=None, title: str = "Backtest Summary"
+        self, registry: Any, ohlc_df=None, parent=None, title: str = "Backtest Summary"
     ):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -312,10 +312,12 @@ class BacktestSummaryWindow(QMainWindow):
         self._trades_chart_window: Optional[QMainWindow] = None
 
         # Create the data model
-        if isinstance(results, BacktestResultModel):
-            self.model = results
+        if isinstance(registry, BacktestResultModel):
+            self.model = registry
         else:
-            self.model = BacktestResultModel(registry=results, ohlc_df=ohlc_df)
+            self.model = BacktestResultModel(
+                registry=registry, result=registry.result, ohlc_df=ohlc_df
+            )
 
         self._setup_ui()
         self._populate_data()
