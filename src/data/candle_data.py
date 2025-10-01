@@ -221,28 +221,25 @@ class CandleData(MarketData):
             raise ValueError('No data provided. Please provide data to format.')
 
     def import_from_csv(self, path: str) -> Union[pd.DataFrame, None]:
-        errors = []
-        for enc in ['utf-8', 'latin-1']:
+        for enc in ['latin1', 'utf-8']:
             try:
                 df = pd.read_csv(path, decimal=',', encoding=enc)
-                df.columns = [
-                    'datetime_index',
-                    'open',
-                    'high',
-                    'low',
-                    'close',
-                    'volume',
-                ]
-                df['datetime_index'] = pd.to_datetime(
-                    df['datetime_index'], format='%d/%m/%Y %H:%M', errors='raise'
-                )
-                # df = df.set_index('datetime_index', inplace=False)[::-1].copy()
-                df = df[::-1].copy()
-                self.df = df
+
+                if isinstance(df, pd.DataFrame):
+                    df.columns = [
+                        'datetime',
+                        'open',
+                        'high',
+                        'low',
+                        'close',
+                        'volume',
+                    ]
+                    df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
+                    df.sort_values(by='datetime', inplace=True, ascending=True)
+                    self.df = df
+                    break
+                else:
+                    continue
 
             except Exception as e:
-                errors.append(e)
-                continue
-
-        for error in errors:
-            print(error)
+                pass
