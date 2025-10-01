@@ -18,13 +18,50 @@ from .signals import (
     SignalDecision,
     MaCrossoverSignal,
     BollingerBandSignal,
+    RsiMeanReversionSignal,
+    AdxDmiSignal,
+    SupertrendFlipSignal,
+    DonchianBreakoutSignal,
+    MacdMomentumSignal,
+    KeltnerSqueezeBreakoutSignal,
+    VwapDeviationReversionSignal,
+    VolumeSpikeExhaustionSignal,
+    AtrTrailingStopReversalSignal,
+    HeikinAshiTrendContinuationSignal,
+    MtfMaAlignmentFilter,
+    ChoppinessRegimeFilter,
 )
 from .swingtrade import MaCrossover
 from .combiners import (
     GatedCombiner,
     ThresholdedWeightedVote,
     WeightedSignalCombiner,
+    HybridSignalCombiner,
 )
+
+__combiners__ = [
+    GatedCombiner,
+    ThresholdedWeightedVote,
+    WeightedSignalCombiner,
+    HybridSignalCombiner,
+]
+
+__signals__ = [
+    MaCrossoverSignal,
+    BollingerBandSignal,
+    RsiMeanReversionSignal,
+    AdxDmiSignal,
+    SupertrendFlipSignal,
+    DonchianBreakoutSignal,
+    MacdMomentumSignal,
+    KeltnerSqueezeBreakoutSignal,
+    VwapDeviationReversionSignal,
+    VolumeSpikeExhaustionSignal,
+    AtrTrailingStopReversalSignal,
+    HeikinAshiTrendContinuationSignal,
+    MtfMaAlignmentFilter,
+    ChoppinessRegimeFilter,
+]
 
 __all__ = [
     'CompositeStrategy',

@@ -1,6 +1,10 @@
 __version__ = "0.1.0"
 __description__ = "A package for strategy optimization using Optuna."
 
+from .engine import Optimizer
+
+__all__ = ['Optimizer']
+
 
 def get_package_info():
     """Return package information as a dictionary."""
