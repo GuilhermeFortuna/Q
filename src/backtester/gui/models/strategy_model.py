@@ -398,7 +398,6 @@ class StrategyModel(QObject):
             print(f"Error creating signal instance: {e}")
             import traceback
 
-
             traceback.print_exc()
             return None
 
@@ -429,7 +428,6 @@ class StrategyModel(QObject):
         # Create signal configuration
         signal_config = SignalConfig(
             signal_type=signal_class_name,  # Store class name as string
-            signal_type=signal_class_name,  # class name string
             role=role,
             parameters=signal_template["parameters"].copy(),
             description=signal_template["description"],
@@ -491,6 +489,7 @@ class StrategyModel(QObject):
                 return signal
 
         return None
+
     def get_available_signals(self) -> Dict[SignalType, Dict[str, Any]]:
         """Get the library of available signals."""
         """Get the library of available signals keyed by class name."""
@@ -592,50 +591,7 @@ class StrategyModel(QObject):
             return False
 
         try:
-            import json
-            from datetime import datetime
-
-            # Convert to serializable format
-            strategy_data = {
-                "strategy_id": self._current_strategy.strategy_id,
-                "name": self._current_strategy.name,
-                "description": self._current_strategy.description,
-                "signals": [
-                    {
-                        "signal_type": signal.signal_type.value,
-                            if isinstance(signal.signal_type, str)
-                            else getattr(
-                                signal.signal_type, "value", str(signal.signal_type)
-                            )
-                        ),
-                        "role": signal.role.value,
-                        "parameters": {
-                            name: {
-                                "value": param.value,
-                                "parameter_type": param.parameter_type,
-                                "min_value": param.min_value,
-                                "max_value": param.max_value,
-                                "options": param.options,
-                                "description": param.description,
-                                "required": param.required,
-                            }
-                            for name, param in signal.parameters.items()
-                        },
-                        "enabled": signal.enabled,
-                        "weight": signal.weight,
-                        "description": signal.description,
-                    }
-                    for signal in self._current_strategy.signals
-                ],
-                "combiners": self._current_strategy.combiners,
-                "created_at": self._current_strategy.created_at,
-                "modified_at": self._current_strategy.modified_at,
-            }
-
-            with open(file_path, 'w') as f:
-                json.dump(strategy_data, f, indent=2)
-
-            return True
+            raise NotImplemented("Not yet implemented")
 
         except Exception as e:
             print(f"Error exporting strategy: {e}")
@@ -643,52 +599,4 @@ class StrategyModel(QObject):
 
     def import_strategy(self, file_path: str) -> bool:
         """Import a strategy from a file."""
-        try:
-            import json
-
-            with open(file_path, 'r') as f:
-                strategy_data = json.load(f)
-
-            # Create strategy configuration
-            self._current_strategy = StrategyConfig(
-                strategy_id=strategy_data["strategy_id"],
-                name=strategy_data["name"],
-                description=strategy_data["description"],
-                combiners=strategy_data.get("combiners", []),
-                created_at=strategy_data.get("created_at", ""),
-                st = signal_data["signal_type"]
-                if isinstance(st, str):
-                    signal_type=SignalType(signal_data["signal_type"]),
-                else:
-                    class_name = getattr(st, "value", str(st))
-                signal_config = SignalConfig(
-                    signal_id=signal_data["signal_id"],
-                    signal_type=class_name,
-                    role=SignalRole(signal_data["role"]),
-                    enabled=signal_data.get("enabled", True),
-                    weight=signal_data.get("weight", 1.0),
-                    description=signal_data.get("description", ""),
-                )
-
-                # Load parameters
-                for param_name, param_data in signal_data.get("parameters", {}).items():
-                    signal_config.parameters[param_name] = SignalParameter(
-                        name=param_name,
-                        value=param_data["value"],
-                        parameter_type=param_data["parameter_type"],
-                        min_value=param_data.get("min_value"),
-                        max_value=param_data.get("max_value"),
-                        options=param_data.get("options"),
-                        description=param_data.get("description", ""),
-                        required=param_data.get("required", True),
-                    )
-
-                # Add imported signals at the beginning to maintain order
-                self._current_strategy.signals.insert(0, signal_config)
-
-            self.strategy_changed.emit()
-            return True
-
-        except Exception as e:
-            print(f"Error importing strategy: {e}")
-            return False
+        raise NotImplemented("Not yet implemented")
