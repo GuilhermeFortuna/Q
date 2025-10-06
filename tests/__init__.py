@@ -1,7 +1,7 @@
 import pandas as pd
 from src.helper import PrintMessage
-from src.backtester.data import CandleData
-from datetime import datetime, timedelta
+from src.data import CandleData
+from datetime import datetime
 import pytest
 import functools
 import os

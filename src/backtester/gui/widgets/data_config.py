@@ -36,7 +36,7 @@ from PySide6.QtGui import QFont
 import pandas as pd
 
 from ..models.backtest_model import BacktestModel, DataSourceConfig
-from src.backtester.data import CandleData, TickData
+from src.data import CandleData, TickData
 
 
 class DataSourceWidget(QWidget):
@@ -647,53 +647,120 @@ class DataConfigWidget(QWidget):
 
         try:
             if config.source_type.lower() in ["csv"]:
-                # Try common encodings if necessary
-                df = None
+                # First, peek at the CSV to detect if it has Portuguese columns
+                # This helps us decide whether to use the specialized import_from_csv method
+                df_peek = None
                 for enc in ("utf-8", "latin-1", "cp1252"):
                     try:
-                        df = pd.read_csv(config.file_path, encoding=enc)
+                        df_peek = pd.read_csv(config.file_path, encoding=enc, nrows=1)
                         break
                     except Exception:
                         continue
-                if df is None:
+
+                if df_peek is None:
                     raise ValueError("Failed to read CSV with common encodings")
+
+                # Check if CSV has Portuguese column names
+                portuguese_columns = [
+                    'abertura',
+                    'máxima',
+                    'maxima',
+                    'mínima',
+                    'minima',
+                    'fechamento',
+                    'data',
+                    'volume quantidade',
+                ]
+                has_portuguese = any(
+                    col.lower() in portuguese_columns for col in df_peek.columns
+                )
+
+                if has_portuguese:
+                    # Use CandleData.import_from_csv() which handles Portuguese format
+                    print(
+                        f"Detected Portuguese columns, using CandleData.import_from_csv()"
+                    )
+                    data_obj = CandleData(
+                        symbol=config.symbol, timeframe=config.timeframe
+                    )
+                    data_obj.import_from_csv(config.file_path)
+
+                    # import_from_csv sets self.df internally, doesn't return it
+                    if data_obj.df is None or data_obj.df.empty:
+                        raise ValueError(
+                            "CandleData.import_from_csv() failed to load data"
+                        )
+
+                    print(
+                        f"Successfully loaded Portuguese CSV with columns: {list(data_obj.df.columns)}"
+                    )
+                else:
+                    # Standard CSV loading for English/other formats
+                    print(f"Loading standard CSV file")
+                    df = None
+                    for enc in ("utf-8", "latin-1", "cp1252"):
+                        try:
+                            df = pd.read_csv(config.file_path, encoding=enc)
+                            break
+                        except Exception:
+                            continue
+                    if df is None:
+                        raise ValueError("Failed to read CSV with common encodings")
+
+                    # Create CandleData or TickData based on column detection
+                    ohlc_columns = ['open', 'high', 'low', 'close']
+                    df_columns_lower = [col.lower() for col in df.columns]
+                    has_ohlc = any(col in ohlc_columns for col in df_columns_lower)
+
+                    if has_ohlc:
+                        data_obj = CandleData(
+                            symbol=config.symbol, timeframe=config.timeframe
+                        )
+                        data_obj.df = df
+                        print(f"Created CandleData object for {source_id}")
+                    else:
+                        data_obj = TickData(symbol=config.symbol)
+                        data_obj.df = df
+                        print(f"Created TickData object for {source_id}")
 
             elif config.source_type.lower() in ["parquet"]:
                 df = pd.read_parquet(config.file_path)
+
+                # Basic sanity check
+                if df is None or df.empty:
+                    raise ValueError("Loaded data is empty")
+
+                # Create CandleData or TickData based on column detection
+                ohlc_columns = ['open', 'high', 'low', 'close']
+                df_columns_lower = [col.lower() for col in df.columns]
+                has_ohlc = any(col in ohlc_columns for col in df_columns_lower)
+
+                if has_ohlc:
+                    data_obj = CandleData(
+                        symbol=config.symbol, timeframe=config.timeframe
+                    )
+                    data_obj.df = df
+                else:
+                    data_obj = TickData(symbol=config.symbol)
+                    data_obj.df = df
 
             elif config.source_type.lower() == "mt5":
                 # MT5 import - delegate to CandleData if available
                 date_from = config.date_from
                 date_to = config.date_to
-                df = CandleData(config.symbol, config.timeframe).import_from_mt5(
+                candle_data = CandleData(config.symbol, config.timeframe)
+                df = candle_data.import_from_mt5(
                     mt5_symbol=config.symbol,
                     timeframe=config.timeframe,
                     date_from=date_from,
                     date_to=date_to,
                 )
+                if df is None or df.empty:
+                    raise ValueError("MT5 import returned empty data")
+                data_obj = candle_data
             else:
                 raise ValueError(f"Unsupported source type: {config.source_type}")
 
-            # Basic sanity: ensure DataFrame
-            if df is None or (hasattr(df, 'empty') and df.empty):
-                raise ValueError("Loaded data is empty")
-
-            # Wrap DataFrame in appropriate MarketData object
-            from src.data import CandleData, TickData
-            
-            # Determine if this is candle or tick data based on columns
-            ohlc_columns = ['open', 'high', 'low', 'close', 'Open', 'High', 'Low', 'Close']
-            has_ohlc = any(col.lower() in [c.lower() for c in ohlc_columns] for col in df.columns)
-            
-            if has_ohlc:
-                # Create CandleData object
-                data_obj = CandleData(symbol=config.symbol, timeframe=config.timeframe)
-                data_obj.df = df
-            else:
-                # Create TickData object
-                data_obj = TickData(symbol=config.symbol)
-                data_obj.df = df
-            
             # Store wrapped data object in model and update UI
             self.backtest_model.store_loaded_data(source_id, data_obj)
             widget.set_loaded_status(True)
@@ -761,9 +828,31 @@ class DataConfigWidget(QWidget):
                     elif 'Tick' in class_name:
                         data_type = "tick"
                     elif hasattr(data, 'columns'):
-                        # Check if it has OHLC columns (candle data)
-                        ohlc_columns = ['open', 'high', 'low', 'close', 'Open', 'High', 'Low', 'Close']
-                        has_ohlc = any(col.lower() in [c.lower() for c in ohlc_columns] for col in data.columns)
+                        # Check if it has OHLC columns (candle data) - support multiple languages
+                        ohlc_columns = [
+                            # English
+                            'open',
+                            'high',
+                            'low',
+                            'close',
+                            # Portuguese
+                            'abertura',
+                            'maxima',
+                            'minima',
+                            'fechamento',
+                            # Spanish
+                            'apertura',
+                            'maximo',
+                            'minimo',
+                            'cierre',
+                            # French
+                            'ouverture',
+                            'haut',
+                            'bas',
+                            'fermeture',
+                        ]
+                        df_columns_lower = [col.lower() for col in data.columns]
+                        has_ohlc = any(col in ohlc_columns for col in df_columns_lower)
                         data_type = "candle" if has_ohlc else "tick"
 
                 stats_text.append(f"\nSource: {source_id}")

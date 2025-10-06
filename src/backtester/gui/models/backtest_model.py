@@ -210,22 +210,34 @@ class BacktestModel(QObject):
         """Get loaded data for all data sources in the format expected by the Engine."""
         # Transform data from source_id -> data_obj to data_type -> data_obj
         engine_data = {}
-        
+
         for source_id, data_obj in self._loaded_data.items():
+            # Debug logging
+            print(f"Processing source {source_id}")
+            print(f"  Data object type: {type(data_obj)}")
+            print(f"  Data object class name: {data_obj.__class__.__name__}")
+
             # Determine data type based on the data object type
             if hasattr(data_obj, '__class__'):
                 class_name = data_obj.__class__.__name__
-                if 'Candle' in class_name:
+                print(f"  Checking class name: {class_name}")
+
+                if 'Candle' in class_name or 'CandleData' in class_name:
                     engine_data['candle'] = data_obj
-                elif 'Tick' in class_name:
+                    print(f"  -> Classified as 'candle' data")
+                elif 'Tick' in class_name or 'TickData' in class_name:
                     engine_data['tick'] = data_obj
+                    print(f"  -> Classified as 'tick' data")
                 else:
                     # Fallback: try to infer from the data object's attributes
                     if hasattr(data_obj, 'timeframe'):
                         engine_data['candle'] = data_obj
+                        print(f"  -> Classified as 'candle' data (has timeframe)")
                     else:
                         engine_data['tick'] = data_obj
-        
+                        print(f"  -> Classified as 'tick' data (no timeframe)")
+
+        print(f"Final engine_data keys: {list(engine_data.keys())}")
         return engine_data
 
     def has_data(self) -> bool:
@@ -260,11 +272,27 @@ class BacktestModel(QObject):
     def store_loaded_data(self, source_id: str, data: Any) -> None:
         """Store loaded data object for a given data source and emit data_loaded."""
         try:
+            print(f"[store_loaded_data] Storing data for source_id: {source_id}")
+            print(f"[store_loaded_data] Data type: {type(data)}")
+            print(f"[store_loaded_data] Data class name: {data.__class__.__name__}")
+            print(
+                f"[store_loaded_data] Has 'timeframe' attribute: {hasattr(data, 'timeframe')}"
+            )
+            if hasattr(data, 'timeframe'):
+                print(f"[store_loaded_data] Timeframe value: {data.timeframe}")
+
             self._loaded_data[source_id] = data
+            print(
+                f"[store_loaded_data] Successfully stored. Total loaded data sources: {len(self._loaded_data)}"
+            )
+
             # Notify listeners that data is available
             self.data_loaded.emit()
         except Exception as e:
             print(f"Error storing loaded data for {source_id}: {e}")
+            import traceback
+
+            traceback.print_exc()
 
     def clear_loaded_data(self):
         """Clear previously loaded data."""
