@@ -5,6 +5,7 @@ This module contains the data model for managing trading strategies,
 including signal composition, parameter configuration, and validation.
 """
 
+import inspect
 from typing import Dict, List, Optional, Any, Union
 from PySide6.QtCore import QObject, Signal
 from dataclasses import dataclass, field
@@ -96,156 +97,192 @@ class StrategyModel(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._current_strategy: Optional[StrategyConfig] = None
+        # Cache of discovered signal classes for instantiation (must be before _initialize_signal_library)
+        self._signal_classes: Dict[str, type] = {}
         self._available_signals: Dict[SignalType, Dict[str, Any]] = (
             self._initialize_signal_library()
         )
         self._validation_errors: List[str] = []
 
     def _initialize_signal_library(self) -> Dict[SignalType, Dict[str, Any]]:
-        """Initialize the library of available signals with their parameters."""
-        return {
-            SignalType.RSI: {
-                "name": "Relative Strength Index",
-                "description": "Momentum oscillator that measures the speed and magnitude of price changes",
-                "parameters": {
-                    "period": SignalParameter(
-                        name="period",
-                        value=14,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=100,
-                        description="Number of periods for RSI calculation",
-                    ),
-                    "overbought": SignalParameter(
-                        name="overbought",
-                        value=70,
-                        parameter_type="float",
-                        min_value=50,
-                        max_value=100,
-                        description="Overbought threshold",
-                    ),
-                    "oversold": SignalParameter(
-                        name="oversold",
-                        value=30,
-                        parameter_type="float",
-                        min_value=0,
-                        max_value=50,
-                        description="Oversold threshold",
-                    ),
-                },
-            },
-            SignalType.MACD: {
-                "name": "Moving Average Convergence Divergence",
-                "description": "Trend-following momentum indicator",
-                "parameters": {
-                    "fast_period": SignalParameter(
-                        name="fast_period",
-                        value=12,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=50,
-                        description="Fast EMA period",
-                    ),
-                    "slow_period": SignalParameter(
-                        name="slow_period",
-                        value=26,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=100,
-                        description="Slow EMA period",
-                    ),
-                    "signal_period": SignalParameter(
-                        name="signal_period",
-                        value=9,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=50,
-                        description="Signal line EMA period",
-                    ),
-                },
-            },
-            SignalType.MOVING_AVERAGE: {
-                "name": "Moving Average",
-                "description": "Simple or exponential moving average",
-                "parameters": {
-                    "period": SignalParameter(
-                        name="period",
-                        value=20,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=200,
-                        description="Moving average period",
-                    ),
-                    "ma_type": SignalParameter(
-                        name="ma_type",
-                        value="SMA",
-                        parameter_type="str",
-                        options=["SMA", "EMA", "WMA", "DEMA", "TEMA"],
-                        description="Type of moving average",
-                    ),
-                },
-            },
-            SignalType.BOLLINGER_BANDS: {
-                "name": "Bollinger Bands",
-                "description": "Volatility indicator with upper and lower bands",
-                "parameters": {
-                    "period": SignalParameter(
-                        name="period",
-                        value=20,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=100,
-                        description="Moving average period",
-                    ),
-                    "std_dev": SignalParameter(
-                        name="std_dev",
-                        value=2.0,
-                        parameter_type="float",
-                        min_value=0.1,
-                        max_value=5.0,
-                        description="Standard deviation multiplier",
-                    ),
-                },
-            },
-            SignalType.STOCHASTIC: {
-                "name": "Stochastic Oscillator",
-                "description": "Momentum indicator comparing closing price to price range",
-                "parameters": {
-                    "k_period": SignalParameter(
-                        name="k_period",
-                        value=14,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=50,
-                        description="%K period",
-                    ),
-                    "d_period": SignalParameter(
-                        name="d_period",
-                        value=3,
-                        parameter_type="int",
-                        min_value=1,
-                        max_value=20,
-                        description="%D period",
-                    ),
-                    "overbought": SignalParameter(
-                        name="overbought",
-                        value=80,
-                        parameter_type="float",
-                        min_value=50,
-                        max_value=100,
-                        description="Overbought threshold",
-                    ),
-                    "oversold": SignalParameter(
-                        name="oversold",
-                        value=20,
-                        parameter_type="float",
-                        min_value=0,
-                        max_value=50,
-                        description="Oversold threshold",
-                    ),
-                },
-            },
-        }
+        """
+        Dynamically discover and initialize the library of available signals.
+
+        This method scans the src/strategies/signals package, finds all TradingSignal
+        subclasses, and extracts their metadata (name, description, parameters) from
+        their class definition and __init__ signature.
+        """
+        import importlib
+        import pkgutil
+        from pathlib import Path
+
+        signal_library = {}
+
+        try:
+            # Import the signals package
+            import src.strategies.signals as signals_package
+            from src.strategies.signals.base import TradingSignal
+
+            # Get the package path
+            package_path = Path(signals_package.__file__).parent
+
+            # Iterate through all modules in the signals package
+            for _, module_name, _ in pkgutil.iter_modules([str(package_path)]):
+                if module_name == 'base' or module_name.startswith('_'):
+                    continue
+
+                try:
+                    # Import the module
+                    module = importlib.import_module(
+                        f'src.strategies.signals.{module_name}'
+                    )
+
+                    # Find all TradingSignal subclasses in the module
+                    for name, obj in inspect.getmembers(module, inspect.isclass):
+                        if (
+                            obj is not TradingSignal
+                            and issubclass(obj, TradingSignal)
+                            and obj.__module__ == module.__name__
+                        ):
+
+                            # Extract signal metadata
+                            signal_info = self._extract_signal_metadata(obj)
+                            if signal_info:
+                                # Use class name as the key
+                                signal_library[name] = signal_info
+                                # Cache the class for later instantiation
+                                self._signal_classes[name] = obj
+
+                except Exception as e:
+                    print(f"Error loading signal module {module_name}: {e}")
+                    continue
+
+            print(
+                f"Discovered {len(signal_library)} signals: {list(signal_library.keys())}"
+            )
+
+        except Exception as e:
+            print(f"Error initializing signal library: {e}")
+            import traceback
+
+            traceback.print_exc()
+
+        return signal_library
+
+    def _extract_signal_metadata(self, signal_class: type) -> Optional[Dict[str, Any]]:
+        """
+        Extract metadata from a signal class including name, description, and parameters.
+
+        Parameters are extracted from the __init__ method signature using inspect.
+        """
+        from typing import get_type_hints
+
+        try:
+            # Get class name and docstring
+            class_name = signal_class.__name__
+            docstring = inspect.getdoc(signal_class) or "No description available"
+
+            # Extract first line as name, rest as description
+            doc_lines = docstring.split('\n', 1)
+            name = doc_lines[0].strip()
+            description = doc_lines[1].strip() if len(doc_lines) > 1 else name
+
+            # Get __init__ signature
+            sig = inspect.signature(signal_class.__init__)
+
+            # Extract parameters
+            parameters = {}
+            for param_name, param in sig.parameters.items():
+                if param_name in ('self', 'args', 'kwargs'):
+                    continue
+
+                # Get parameter metadata
+                param_info = self._extract_parameter_metadata(param_name, param, sig)
+                if param_info:
+                    parameters[param_name] = param_info
+
+            return {
+                'name': name,
+                'description': description,
+                'class_name': class_name,
+                'parameters': parameters,
+            }
+
+        except Exception as e:
+            print(f"Error extracting metadata from {signal_class.__name__}: {e}")
+            return None
+
+    def _extract_parameter_metadata(
+        self, param_name: str, param: inspect.Parameter, signature: inspect.Signature
+    ) -> Optional[SignalParameter]:
+        """Extract metadata for a single parameter from its signature."""
+        import inspect
+
+        # Get default value
+        default_value = (
+            param.default if param.default != inspect.Parameter.empty else None
+        )
+
+        # Infer parameter type from annotation or default value
+        param_type = 'str'  # default
+        if param.annotation != inspect.Parameter.empty:
+            annotation = param.annotation
+            # Handle Optional types
+            if hasattr(annotation, '__origin__'):
+                if annotation.__origin__ is Union:
+                    # Get the first non-None type
+                    args = [a for a in annotation.__args__ if a is not type(None)]
+                    if args:
+                        annotation = args[0]
+
+            if annotation == int or annotation == 'int':
+                param_type = 'int'
+            elif annotation == float or annotation == 'float':
+                param_type = 'float'
+            elif annotation == bool or annotation == 'bool':
+                param_type = 'bool'
+            elif annotation == str or annotation == 'str':
+                param_type = 'str'
+        elif default_value is not None:
+            # Infer from default value
+            if isinstance(default_value, int):
+                param_type = 'int'
+            elif isinstance(default_value, float):
+                param_type = 'float'
+            elif isinstance(default_value, bool):
+                param_type = 'bool'
+            elif isinstance(default_value, str):
+                param_type = 'str'
+
+        # Set reasonable min/max values based on parameter name and type
+        min_value = None
+        max_value = None
+        if param_type in ('int', 'float'):
+            if 'period' in param_name.lower() or 'length' in param_name.lower():
+                min_value = 1
+                max_value = 500
+            elif 'band' in param_name.lower() or 'threshold' in param_name.lower():
+                min_value = 0
+                max_value = 100
+            elif 'std' in param_name.lower() or 'deviation' in param_name.lower():
+                min_value = 0.1
+                max_value = 10.0
+            else:
+                min_value = 0
+                max_value = 1000
+
+        # Check if parameter is required (no default value)
+        required = param.default == inspect.Parameter.empty
+
+        return SignalParameter(
+            name=param_name,
+            value=default_value,
+            parameter_type=param_type,
+            min_value=min_value,
+            max_value=max_value,
+            description=f"{param_name} parameter",
+            required=required,
+        )
 
     def create_strategy(self, name: str, description: str = "") -> str:
         """Create a new strategy."""
@@ -327,99 +364,56 @@ class StrategyModel(QObject):
     def _create_signal_instance(
         self, signal_config: SignalConfig
     ) -> Optional[TradingSignal]:
-        """Create a TradingSignal instance from a SignalConfig."""
-        try:
-            # Map signal types to their implementation classes
-            signal_map = {
-                SignalType.RSI: self._create_rsi_signal,
-                SignalType.MACD: self._create_macd_signal,
-                SignalType.MOVING_AVERAGE: self._create_ma_signal,
-                SignalType.BOLLINGER_BANDS: self._create_bbands_signal,
-                SignalType.STOCHASTIC: self._create_stochastic_signal,
-            }
+        """
+        Create a TradingSignal instance from a SignalConfig.
 
-            creator = signal_map.get(signal_config.signal_type)
-            if not creator:
-                print(f"Unknown signal type: {signal_config.signal_type}")
+        This method dynamically instantiates the signal class using the cached
+        signal classes and passes the configured parameters.
+        """
+        try:
+            # Get the signal class name from the config
+            # signal_type can be either a string (class name) or SignalType enum
+            if isinstance(signal_config.signal_type, str):
+                class_name = signal_config.signal_type
+            else:
+                # For backward compatibility with SignalType enum
+                class_name = signal_config.signal_type.value
+
+            # Get the signal class
+            signal_class = self._signal_classes.get(class_name)
+            if not signal_class:
+                print(f"Signal class not found: {class_name}")
                 return None
 
-            return creator(signal_config)
+            # Build kwargs from parameters
+            kwargs = {}
+            for param_name, param in signal_config.parameters.items():
+                if param.value is not None:
+                    kwargs[param_name] = param.value
+
+            # Instantiate the signal
+            return signal_class(**kwargs)
 
         except Exception as e:
-            print(f"Error creating signal {signal_config.signal_id}: {e}")
+            print(f"Error creating signal instance: {e}")
+            import traceback
+
+
+            traceback.print_exc()
             return None
 
-    def _create_rsi_signal(self, config: SignalConfig) -> Optional[TradingSignal]:
-        """Create RSI mean reversion signal."""
-        from src.strategies.signals.rsi_mean_reversion import RsiMeanReversionSignal
+    def add_signal(self, signal_class_name: str, role: SignalRole, **kwargs) -> str:
+        """
+        Add a signal to the current strategy.
 
-        period = config.parameters.get("period")
-        overbought = config.parameters.get("overbought")
-        oversold = config.parameters.get("oversold")
+        Args:
+            signal_class_name: The name of the signal class (e.g., 'RsiMeanReversionSignal')
+            role: The role of the signal (ENTRY, EXIT, FILTER, CONFIRMATION)
+            **kwargs: Optional parameter overrides
 
-        return RsiMeanReversionSignal(
-            length=period.value if period else 14,
-            upper_band=overbought.value if overbought else 70,
-            lower_band=oversold.value if oversold else 30,
-        )
-
-    def _create_macd_signal(self, config: SignalConfig) -> Optional[TradingSignal]:
-        """Create MACD momentum signal."""
-        from src.strategies.signals.macd_momentum import MacdMomentumSignal
-
-        fast = config.parameters.get("fast_period")
-        slow = config.parameters.get("slow_period")
-        signal = config.parameters.get("signal_period")
-
-        return MacdMomentumSignal(
-            fast=fast.value if fast else 12,
-            slow=slow.value if slow else 26,
-            signal=signal.value if signal else 9,
-        )
-
-    def _create_ma_signal(self, config: SignalConfig) -> Optional[TradingSignal]:
-        """Create moving average crossover signal."""
-        from src.strategies.signals.ma_crossover import MaCrossoverSignal
-
-        period = config.parameters.get("period")
-        ma_type = config.parameters.get("ma_type")
-
-        # For MA crossover, we need short and long periods
-        # Use the period as short and period*2 as long
-        short_period = period.value if period else 20
-        long_period = short_period * 2
-        ma_func = ma_type.value.lower() if ma_type else "sma"
-
-        return MaCrossoverSignal(
-            tick_value=0.25,  # Default tick value, should be configurable
-            short_ma_func=ma_func,
-            long_ma_func=ma_func,
-            short_ma_period=short_period,
-            long_ma_period=long_period,
-        )
-
-    def _create_bbands_signal(self, config: SignalConfig) -> Optional[TradingSignal]:
-        """Create Bollinger Bands signal."""
-        from src.strategies.signals.bbands import BollingerBandSignal
-
-        period = config.parameters.get("period")
-        std_dev = config.parameters.get("std_dev")
-
-        return BollingerBandSignal(
-            length=period.value if period else 20, std=std_dev.value if std_dev else 2.0
-        )
-
-    def _create_stochastic_signal(
-        self, config: SignalConfig
-    ) -> Optional[TradingSignal]:
-        """Create Stochastic oscillator signal."""
-        # Note: You may need to create a StochasticSignal class if it doesn't exist
-        # For now, we'll use RSI as a fallback
-        print("Stochastic signal not yet implemented, using RSI as fallback")
-        return self._create_rsi_signal(config)
-
-    def add_signal(self, signal_type: SignalType, role: SignalRole, **kwargs) -> str:
-        """Add a signal to the current strategy."""
+        Returns:
+            The signal_id of the newly added signal
+        """
         if not self._current_strategy:
             raise ValueError("No strategy loaded")
 
@@ -428,14 +422,14 @@ class StrategyModel(QObject):
         signal_id = str(uuid.uuid4())
 
         # Get signal template
-        signal_template = self._available_signals.get(signal_type)
+        signal_template = self._available_signals.get(signal_class_name)
         if not signal_template:
-            raise ValueError(f"Unknown signal type: {signal_type}")
+            raise ValueError(f"Unknown signal class: {signal_class_name}")
 
         # Create signal configuration
         signal_config = SignalConfig(
-            signal_id=signal_id,
-            signal_type=signal_type,
+            signal_type=signal_class_name,  # Store class name as string
+            signal_type=signal_class_name,  # class name string
             role=role,
             parameters=signal_template["parameters"].copy(),
             description=signal_template["description"],
@@ -497,9 +491,9 @@ class StrategyModel(QObject):
                 return signal
 
         return None
-
     def get_available_signals(self) -> Dict[SignalType, Dict[str, Any]]:
         """Get the library of available signals."""
+        """Get the library of available signals keyed by class name."""
         return self._available_signals
 
     def validate_strategy(self) -> bool:
@@ -608,8 +602,12 @@ class StrategyModel(QObject):
                 "description": self._current_strategy.description,
                 "signals": [
                     {
-                        "signal_id": signal.signal_id,
                         "signal_type": signal.signal_type.value,
+                            if isinstance(signal.signal_type, str)
+                            else getattr(
+                                signal.signal_type, "value", str(signal.signal_type)
+                            )
+                        ),
                         "role": signal.role.value,
                         "parameters": {
                             name: {
@@ -658,14 +656,14 @@ class StrategyModel(QObject):
                 description=strategy_data["description"],
                 combiners=strategy_data.get("combiners", []),
                 created_at=strategy_data.get("created_at", ""),
-                modified_at=strategy_data.get("modified_at", ""),
-            )
-
-            # Load signals
-            for signal_data in strategy_data.get("signals", []):
+                st = signal_data["signal_type"]
+                if isinstance(st, str):
+                    signal_type=SignalType(signal_data["signal_type"]),
+                else:
+                    class_name = getattr(st, "value", str(st))
                 signal_config = SignalConfig(
                     signal_id=signal_data["signal_id"],
-                    signal_type=SignalType(signal_data["signal_type"]),
+                    signal_type=class_name,
                     role=SignalRole(signal_data["role"]),
                     enabled=signal_data.get("enabled", True),
                     weight=signal_data.get("weight", 1.0),
