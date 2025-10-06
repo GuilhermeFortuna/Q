@@ -377,7 +377,9 @@ class BacktesterMainWindow(QMainWindow):
     def _on_strategy_changed(self):
         """Handle strategy model changes."""
         self._update_status("Strategy updated")
-        self._update_run_button_state()
+        # Use QTimer.singleShot to avoid recursion
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._update_run_button_state)
         
     def _on_data_loaded(self):
         """Handle data loading completion."""

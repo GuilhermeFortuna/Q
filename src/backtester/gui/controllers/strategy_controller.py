@@ -103,7 +103,9 @@ class StrategyController(QObject):
     def _on_strategy_changed(self):
         """Handle strategy model changes."""
         # Validate the strategy when it changes
-        self.validate_strategy()
+        # Use QTimer.singleShot to avoid recursion
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self.validate_strategy)
     
     def _on_validation_changed(self, is_valid: bool):
         """Handle validation state changes."""

@@ -123,6 +123,9 @@ class SignalConfigWidget(QGroupBox):
     def _setup_ui(self):
         self.setTitle(f"{self.signal_config.signal_type.value.upper()} - {self.signal_config.role.value}")
         
+        # Set minimum height for better visibility
+        self.setMinimumHeight(120)
+        
         layout = QVBoxLayout(self)
         
         # Signal info
@@ -338,7 +341,7 @@ class StrategyBuilderWidget(QWidget):
         
         main_layout.addWidget(left_panel, 1)
         
-        # Right panel - Strategy workspace
+        # Right panel - Strategy workspace (give it more space)
         right_panel = QFrame()
         right_panel.setStyleSheet("""
             QFrame {
@@ -440,6 +443,7 @@ class StrategyBuilderWidget(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setMinimumHeight(300)  # Set minimum height for better visibility
         scroll_area.setStyleSheet("""
             QScrollArea {
                 background-color: #1e1e1e;
@@ -451,6 +455,7 @@ class StrategyBuilderWidget(QWidget):
         self.signals_container = QWidget()
         self.signals_container_layout = QVBoxLayout(self.signals_container)
         self.signals_container_layout.setContentsMargins(10, 10, 10, 10)
+        self.signals_container_layout.setSpacing(10)  # Add spacing between signals
         scroll_area.setWidget(self.signals_container)
         
         right_layout.addWidget(scroll_area)
@@ -497,6 +502,10 @@ class StrategyBuilderWidget(QWidget):
     
     def _update_ui(self):
         """Update the UI based on current strategy state."""
+        # Temporarily disconnect text change signals to prevent recursion
+        self.strategy_name_edit.textChanged.disconnect()
+        self.strategy_desc_edit.textChanged.disconnect()
+        
         if self.strategy_model.has_strategy():
             config = self.strategy_model.get_strategy_config()
             self.strategy_name_edit.setText(config.name)
@@ -506,17 +515,26 @@ class StrategyBuilderWidget(QWidget):
             self.strategy_name_edit.clear()
             self.strategy_desc_edit.clear()
             self._clear_signals_display()
+        
+        # Reconnect the signals
+        self.strategy_name_edit.textChanged.connect(self._on_strategy_info_changed)
+        self.strategy_desc_edit.textChanged.connect(self._on_strategy_info_changed)
     
     def _update_signals_display(self):
         """Update the display of current signals."""
         self._clear_signals_display()
         
         if not self.strategy_model.has_strategy():
+            self._add_placeholder()
             return
         
         config = self.strategy_model.get_strategy_config()
-        for signal in config.signals:
-            self._add_signal_widget(signal)
+        
+        if not config.signals:
+            self._add_placeholder()
+        else:
+            for signal in config.signals:
+                self._add_signal_widget(signal)
     
     def _clear_signals_display(self):
         """Clear the signals display."""
@@ -524,29 +542,29 @@ class StrategyBuilderWidget(QWidget):
             widget.deleteLater()
         self.signal_widgets.clear()
         
-        # Add placeholder if no signals
-        if not self.signal_widgets:
-            placeholder = QLabel("🚀 Start building your strategy!\n\nSelect a signal from the left panel and click 'Add Selected Signal' to begin.")
-            placeholder.setStyleSheet("""
-                color: #888888; 
-                font-style: italic; 
-                padding: 30px; 
-                font-size: 14px;
-                background-color: #1a1a1a;
-                border: 2px dashed #404040;
-                border-radius: 8px;
-            """)
-            placeholder.setAlignment(Qt.AlignCenter)
-            self.signals_container_layout.addWidget(placeholder)
+        # Clear all items from layout
+        while self.signals_container_layout.count():
+            child = self.signals_container_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+    
+    def _add_placeholder(self):
+        """Add placeholder message when no signals are present."""
+        placeholder = QLabel("🚀 Start building your strategy!\n\nSelect a signal from the left panel and click 'Add Selected Signal' to begin.")
+        placeholder.setStyleSheet("""
+            color: #888888; 
+            font-style: italic; 
+            padding: 30px; 
+            font-size: 14px;
+            background-color: #1a1a1a;
+            border: 2px dashed #404040;
+            border-radius: 8px;
+        """)
+        placeholder.setAlignment(Qt.AlignCenter)
+        self.signals_container_layout.addWidget(placeholder)
     
     def _add_signal_widget(self, signal_config: SignalConfig):
         """Add a signal widget to the display."""
-        # Remove placeholder if it exists
-        if self.signals_container_layout.count() == 1:
-            item = self.signals_container_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        
         signal_widget = SignalConfigWidget(signal_config)
         signal_widget.signal_updated.connect(self._on_signal_widget_updated)
         signal_widget.signal_removed.connect(self._on_signal_widget_removed)
@@ -688,7 +706,9 @@ class StrategyBuilderWidget(QWidget):
     
     def _on_strategy_changed(self):
         """Handle strategy changed signal."""
-        self._update_ui()
+        # Use QTimer.singleShot to avoid recursion
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(0, self._update_ui)
         self.strategy_changed.emit()
     
     def _on_signal_added(self, signal_id: str):
@@ -724,7 +744,7 @@ class StrategyBuilderWidget(QWidget):
             config = self.strategy_model.get_strategy_config()
             config.name = self.strategy_name_edit.text()
             config.description = self.strategy_desc_edit.toPlainText()
-            self.strategy_model.strategy_changed.emit()
+            # Don't emit strategy_changed here as it will be emitted by the model
     
     def _on_signal_widget_updated(self, signal_id: str):
         """Handle signal widget parameter updates."""

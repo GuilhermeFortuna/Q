@@ -29,6 +29,28 @@ from .evaluation import (
 # Utilities and constants
 from .utils import TIMEFRAMES, TimeframeInfo
 
+# GUI Components (optional - requires PySide6)
+try:
+    from .gui import (
+        BacktesterMainWindow,
+        StrategyBuilderWidget,
+        DataConfigWidget,
+        BacktestConfigWidget,
+        ExecutionMonitorWidget,
+        SignalLibraryWidget,
+    )
+    from .gui.models import StrategyModel, BacktestModel
+    from .gui.controllers import StrategyController, ExecutionController
+    from .gui.dialogs import (
+        StrategySaveDialog,
+        DataImportDialog,
+        ParameterEditDialog,
+    )
+    GUI_AVAILABLE = True
+except ImportError:
+    # GUI components not available (missing PySide6 or other dependencies)
+    GUI_AVAILABLE = False
+
 # Package metadata
 __version__ = "0.1.0"
 __author__ = "qcrew"
@@ -53,6 +75,21 @@ __all__ = [
     # Utilities
     "TIMEFRAMES",
     "TimeframeInfo",
+    # GUI Components (if available)
+    "BacktesterMainWindow",
+    "StrategyBuilderWidget",
+    "DataConfigWidget",
+    "BacktestConfigWidget",
+    "ExecutionMonitorWidget",
+    "SignalLibraryWidget",
+    "StrategyModel",
+    "BacktestModel",
+    "StrategyController",
+    "ExecutionController",
+    "StrategySaveDialog",
+    "DataImportDialog",
+    "ParameterEditDialog",
+    "GUI_AVAILABLE",
     # Package info
     "__version__",
 ]
@@ -75,6 +112,24 @@ def get_package_info():
                 'metrics_from_trade_registry',
             ],
             'utilities': ['TIMEFRAMES', 'MARKET_DATA_LAYOUT', 'TimeframeInfo'],
+            'gui_components': {
+                'main_window': ['BacktesterMainWindow'],
+                'widgets': [
+                    'StrategyBuilderWidget',
+                    'DataConfigWidget', 
+                    'BacktestConfigWidget',
+                    'ExecutionMonitorWidget',
+                    'SignalLibraryWidget',
+                ],
+                'models': ['StrategyModel', 'BacktestModel'],
+                'controllers': ['StrategyController', 'ExecutionController'],
+                'dialogs': [
+                    'StrategySaveDialog',
+                    'DataImportDialog',
+                    'ParameterEditDialog',
+                ],
+                'available': GUI_AVAILABLE,
+            },
         },
         'key_features': [
             'MT5 integration for live data',
@@ -85,6 +140,10 @@ def get_package_info():
             'Trade registry with tax calculations',
             'Progress tracking and visualization',
             'Objective evaluator for ranking and gating strategies',
+            'Graphical user interface for strategy building',
+            'Visual data configuration and import',
+            'Real-time backtest execution monitoring',
+            'Interactive signal library and parameter editing',
         ],
     }
 

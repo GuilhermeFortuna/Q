@@ -319,7 +319,8 @@ class StrategyModel(QObject):
             if param_name in signal_config.parameters:
                 signal_config.parameters[param_name].value = param_value
         
-        self._current_strategy.signals.append(signal_config)
+        # Add new signals at the beginning of the list so they appear first
+        self._current_strategy.signals.insert(0, signal_config)
         self._update_modified_time()
         self.signal_added.emit(signal_id)
         self.strategy_changed.emit()
@@ -546,7 +547,8 @@ class StrategyModel(QObject):
                         required=param_data.get("required", True)
                     )
                 
-                self._current_strategy.signals.append(signal_config)
+                # Add imported signals at the beginning to maintain order
+                self._current_strategy.signals.insert(0, signal_config)
             
             self.strategy_changed.emit()
             return True
