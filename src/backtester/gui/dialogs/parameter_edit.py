@@ -47,28 +47,41 @@ class ParameterEditDialog(QDialog):
     
     def _create_parameter_widget(self, param_info):
         """Create a widget for editing a parameter."""
-        param_type = param_info.get('type', 'str')
-        value = param_info.get('value', '')
+        # Handle both dict and SignalParameter object
+        if hasattr(param_info, 'parameter_type'):
+            # SignalParameter object
+            param_type = param_info.parameter_type
+            value = param_info.value
+            min_value = param_info.min_value
+            max_value = param_info.max_value
+            options = param_info.options
+        else:
+            # Dict format (backward compatibility)
+            param_type = param_info.get('type', 'str')
+            value = param_info.get('value', '')
+            min_value = param_info.get('min', None)
+            max_value = param_info.get('max', None)
+            options = param_info.get('choices', None)
         
         if param_type == 'int':
             widget = QSpinBox()
-            widget.setRange(param_info.get('min', 0), param_info.get('max', 999999))
-            widget.setValue(int(value) if value else 0)
+            widget.setRange(min_value if min_value is not None else 0, max_value if max_value is not None else 999999)
+            widget.setValue(int(value) if value is not None else 0)
         elif param_type == 'float':
             widget = QDoubleSpinBox()
-            widget.setRange(param_info.get('min', 0.0), param_info.get('max', 999999.0))
-            widget.setValue(float(value) if value else 0.0)
+            widget.setRange(min_value if min_value is not None else 0.0, max_value if max_value is not None else 999999.0)
+            widget.setValue(float(value) if value is not None else 0.0)
             widget.setDecimals(2)
         elif param_type == 'bool':
             widget = QCheckBox()
-            widget.setChecked(bool(value) if value else False)
-        elif param_type == 'choice':
+            widget.setChecked(bool(value) if value is not None else False)
+        elif param_type == 'list' and options:
             widget = QComboBox()
-            widget.addItems(param_info.get('choices', []))
-            widget.setCurrentText(str(value) if value else '')
+            widget.addItems(options)
+            widget.setCurrentText(str(value) if value is not None else '')
         else:
             widget = QLineEdit()
-            widget.setText(str(value) if value else '')
+            widget.setText(str(value) if value is not None else '')
         
         return widget
     
@@ -87,5 +100,9 @@ class ParameterEditDialog(QDialog):
             else:
                 values[param_name] = widget.text()
         return values
+    
+    def get_parameters(self):
+        """Alias for get_parameter_values for compatibility."""
+        return self.get_parameter_values()
 
 

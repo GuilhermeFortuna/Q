@@ -99,12 +99,12 @@ class StrategyModel(QObject):
         self._current_strategy: Optional[StrategyConfig] = None
         # Cache of discovered signal classes for instantiation (must be before _initialize_signal_library)
         self._signal_classes: Dict[str, type] = {}
-        self._available_signals: Dict[SignalType, Dict[str, Any]] = (
+        self._available_signals: Dict[str, Dict[str, Any]] = (
             self._initialize_signal_library()
         )
         self._validation_errors: List[str] = []
 
-    def _initialize_signal_library(self) -> Dict[SignalType, Dict[str, Any]]:
+    def _initialize_signal_library(self) -> Dict[str, Dict[str, Any]]:
         """
         Dynamically discover and initialize the library of available signals.
 
@@ -427,6 +427,7 @@ class StrategyModel(QObject):
 
         # Create signal configuration
         signal_config = SignalConfig(
+            signal_id=signal_id,
             signal_type=signal_class_name,  # Store class name as string
             role=role,
             parameters=signal_template["parameters"].copy(),

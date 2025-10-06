@@ -207,9 +207,26 @@ class BacktestModel(QObject):
         return self._validation_errors.copy()
 
     def get_data(self) -> Dict[str, Any]:
-        """Get loaded data for all data sources."""
-        # Return a copy of any loaded data objects stored by the model.
-        return self._loaded_data.copy()
+        """Get loaded data for all data sources in the format expected by the Engine."""
+        # Transform data from source_id -> data_obj to data_type -> data_obj
+        engine_data = {}
+        
+        for source_id, data_obj in self._loaded_data.items():
+            # Determine data type based on the data object type
+            if hasattr(data_obj, '__class__'):
+                class_name = data_obj.__class__.__name__
+                if 'Candle' in class_name:
+                    engine_data['candle'] = data_obj
+                elif 'Tick' in class_name:
+                    engine_data['tick'] = data_obj
+                else:
+                    # Try to infer from the data object's attributes
+                    if hasattr(data_obj, 'timeframe'):
+                        engine_data['candle'] = data_obj
+                    else:
+                        engine_data['tick'] = data_obj
+        
+        return engine_data
 
     def has_data(self) -> bool:
         """Check if any data has been loaded."""

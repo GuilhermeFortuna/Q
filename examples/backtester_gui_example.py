@@ -9,6 +9,9 @@ It shows how to launch the GUI and perform basic operations.
 import sys
 import os
 
+# Add the src directory to the Python path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
 from PySide6.QtWidgets import QApplication
 from src.backtester.gui.main_window import BacktesterMainWindow
 
