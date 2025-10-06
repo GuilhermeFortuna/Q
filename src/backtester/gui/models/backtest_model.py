@@ -216,6 +216,30 @@ class BacktestModel(QObject):
         # Return True if any data has been loaded into the model.
         return len(self._loaded_data) > 0
 
+    def has_config(self) -> bool:
+        """Check if the model has enough configuration to run a backtest.
+
+        Returns True when there is at least one data source and basic backtest parameters
+        are set (e.g., positive point value).
+        """
+        # Must have at least one data source
+        if not self._data_sources:
+            return False
+        # Basic validation of backtest parameters
+        if (
+            self._backtest_config.point_value is None
+            or self._backtest_config.point_value <= 0
+        ):
+            return False
+        return True
+
+    def get_ohlc_data(self) -> Optional[Any]:
+        """Get OHLC data for visualization."""
+        # Return the first loaded data source for visualization
+        if self._loaded_data:
+            return next(iter(self._loaded_data.values()), None)
+        return None
+
     def store_loaded_data(self, source_id: str, data: Any) -> None:
         """Store loaded data object for a given data source and emit data_loaded."""
         try:
