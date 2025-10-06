@@ -220,7 +220,7 @@ class BacktestModel(QObject):
                 elif 'Tick' in class_name:
                     engine_data['tick'] = data_obj
                 else:
-                    # Try to infer from the data object's attributes
+                    # Fallback: try to infer from the data object's attributes
                     if hasattr(data_obj, 'timeframe'):
                         engine_data['candle'] = data_obj
                     else:

@@ -152,7 +152,10 @@ class EngineTickData(EngineData):
         from src.data import TickData
 
         super().__init__(data_obj=data_obj)
-        self.dtype_map = [(col, 'float64') if col != 'datetime' else (col, 'int64')]
+        self.dtype_map = [
+            (col, 'float64') if col != 'datetime' else (col, 'int64')
+            for col in self.data.columns
+        ]
 
     def set_values_as_attrs(self) -> None:
         """Expose numpy arrays for hot path to avoid pandas overhead."""

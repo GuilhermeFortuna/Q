@@ -336,7 +336,10 @@ class DataPreviewWidget(QWidget):
             return
 
         try:
-            if hasattr(data, 'data') and data.data is not None:
+            # Handle wrapped data objects (CandleData/TickData)
+            if hasattr(data, 'df') and data.df is not None:
+                df = data.df
+            elif hasattr(data, 'data') and data.data is not None:
                 df = data.data
             else:
                 df = data
@@ -675,8 +678,24 @@ class DataConfigWidget(QWidget):
             if df is None or (hasattr(df, 'empty') and df.empty):
                 raise ValueError("Loaded data is empty")
 
-            # Store loaded data in model and update UI
-            self.backtest_model.store_loaded_data(source_id, df)
+            # Wrap DataFrame in appropriate MarketData object
+            from src.data import CandleData, TickData
+            
+            # Determine if this is candle or tick data based on columns
+            ohlc_columns = ['open', 'high', 'low', 'close', 'Open', 'High', 'Low', 'Close']
+            has_ohlc = any(col.lower() in [c.lower() for c in ohlc_columns] for col in df.columns)
+            
+            if has_ohlc:
+                # Create CandleData object
+                data_obj = CandleData(symbol=config.symbol, timeframe=config.timeframe)
+                data_obj.df = df
+            else:
+                # Create TickData object
+                data_obj = TickData(symbol=config.symbol)
+                data_obj.df = df
+            
+            # Store wrapped data object in model and update UI
+            self.backtest_model.store_loaded_data(source_id, data_obj)
             widget.set_loaded_status(True)
 
             # Ensure preview combo contains the source
@@ -716,14 +735,16 @@ class DataConfigWidget(QWidget):
         """Update the data preview."""
         current_source = self.preview_source_combo.currentData()
         if current_source:
-            data = self.backtest_model.get_data().get(current_source)
+            # Get data directly from the loaded data (by source_id)
+            data = self.backtest_model._loaded_data.get(current_source)
             self.preview_widget.set_data(data, current_source)
 
     def _refresh_statistics(self):
         """Refresh the statistics display."""
         stats_text = []
 
-        loaded_data = self.backtest_model.get_data()
+        # Get the raw loaded data (by source_id) for display purposes
+        loaded_data = self.backtest_model._loaded_data
         if not loaded_data:
             stats_text.append("No data loaded")
         else:
@@ -731,16 +752,38 @@ class DataConfigWidget(QWidget):
             stats_text.append("=" * 50)
 
             for source_id, data in loaded_data.items():
+                # Determine data type for display
+                data_type = "unknown"
+                if hasattr(data, '__class__'):
+                    class_name = data.__class__.__name__
+                    if 'Candle' in class_name:
+                        data_type = "candle"
+                    elif 'Tick' in class_name:
+                        data_type = "tick"
+                    elif hasattr(data, 'columns'):
+                        # Check if it has OHLC columns (candle data)
+                        ohlc_columns = ['open', 'high', 'low', 'close', 'Open', 'High', 'Low', 'Close']
+                        has_ohlc = any(col.lower() in [c.lower() for c in ohlc_columns] for col in data.columns)
+                        data_type = "candle" if has_ohlc else "tick"
+
                 stats_text.append(f"\nSource: {source_id}")
                 stats_text.append("-" * 30)
+                stats_text.append(f"Data Type: {data_type}")
 
                 if hasattr(data, 'symbol'):
                     stats_text.append(f"Symbol: {data.symbol}")
                 if hasattr(data, 'timeframe'):
                     stats_text.append(f"Timeframe: {data.timeframe}")
 
-                if hasattr(data, 'data') and data.data is not None:
+                # Handle wrapped data objects (CandleData/TickData)
+                if hasattr(data, 'df') and data.df is not None:
+                    df = data.df
+                elif hasattr(data, 'data') and data.data is not None:
                     df = data.data
+                else:
+                    df = data
+
+                if hasattr(df, 'columns'):
                     stats_text.append(f"Rows: {len(df)}")
                     stats_text.append(f"Columns: {list(df.columns)}")
 

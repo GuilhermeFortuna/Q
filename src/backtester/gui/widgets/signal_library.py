@@ -513,3 +513,4 @@ class SignalLibraryWidget(QWidget):
                 if signal_widget and signal_widget.signal_class_name == signal_class_name:
                     self.signal_list.setCurrentItem(item)
                     break
+
