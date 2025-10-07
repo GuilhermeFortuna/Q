@@ -14,7 +14,17 @@ class CandlestickItem(pg.GraphicsObject):
         self.picture = QtGui.QPicture()
         p = QtGui.QPainter(self.picture)
         p.setPen(pg.mkPen('w'))
-        w = (self.data['time'].iloc[1] - self.data['time'].iloc[0]) / 3.
+        
+        # Ensure 'time' column exists
+        if 'time' not in self.data.columns:
+            raise ValueError("CandlestickItem requires a numeric 'time' column in the data")
+        
+        # Check if we have enough data for width calculation
+        if len(self.data) < 2:
+            w = 0.3  # Default width for single candle
+        else:
+            w = (self.data['time'].iloc[1] - self.data['time'].iloc[0]) / 3.
+        
         for row in self.data.itertuples():
         #for (t, open, high, low, close) in self.data:
             p.drawLine(QtCore.QPointF(row.time, row.low), QtCore.QPointF(row.time, row.high))

@@ -29,10 +29,20 @@ class DateAxis(pg.AxisItem):
         for v in values:
             index = int(round(v))
             if 0 <= index < len(self._timestamps):
-                # Format the timestamp to a readable date string
-                strings.append(
-                    pd.to_datetime(self._timestamps[index]).strftime('%Y-%m-%d %H:%M')
-                )
+                # Get the timestamp and check if it's valid
+                timestamp = self._timestamps[index]
+                if pd.isna(timestamp) or pd.isnull(timestamp):
+                    # Handle NaT/NaN values
+                    strings.append('')
+                else:
+                    # Format the timestamp to a readable date string
+                    try:
+                        strings.append(
+                            pd.to_datetime(timestamp).strftime('%Y-%m-%d %H:%M')
+                        )
+                    except (ValueError, TypeError):
+                        # Fallback for any other datetime formatting issues
+                        strings.append('')
             else:
                 # Return an empty string for indices outside the data range
                 strings.append('')
@@ -595,11 +605,11 @@ class PlotWindow(BaseWindow):
         # Ensure time_data is properly converted to datetime
         if isinstance(time_data.index, pd.DatetimeIndex):
             # If the index is already datetime, use it directly
-            self._time_values = time_data.reset_index(drop=True)
+            self._time_values = time_data.values
         else:
             # Convert to datetime, handling various input formats
             try:
-                self._time_values = pd.to_datetime(time_data).reset_index(drop=True)
+                self._time_values = pd.to_datetime(time_data).values
             except Exception as e:
                 print(f"Warning: Could not convert time_data to datetime: {e}")
                 # Fallback: create a dummy datetime range
@@ -607,9 +617,34 @@ class PlotWindow(BaseWindow):
                     start='2021-01-01', 
                     periods=len(df), 
                     freq='1H'
-                )
+                ).values
         
-        date_axis = DateAxis(timestamps=self._time_values.values, orientation='bottom')
+        # Validate timestamps and remove any NaT values
+        if len(self._time_values) > 0:
+            # Check for NaT values and replace them with valid timestamps
+            valid_mask = ~pd.isna(self._time_values)
+            if not valid_mask.all():
+                print(f"Warning: Found {len(self._time_values) - valid_mask.sum()} NaT values in timestamps")
+                # Create a valid datetime range for the entire dataset
+                if valid_mask.any():
+                    # Use the first valid timestamp as reference
+                    first_valid_idx = valid_mask.argmax()
+                    first_valid_time = self._time_values[first_valid_idx]
+                    # Create a continuous datetime range
+                    self._time_values = pd.date_range(
+                        start=first_valid_time,
+                        periods=len(df),
+                        freq='1H'
+                    ).values
+                else:
+                    # All timestamps are invalid, create a dummy range
+                    self._time_values = pd.date_range(
+                        start='2021-01-01',
+                        periods=len(df),
+                        freq='1H'
+                    ).values
+        
+        date_axis = DateAxis(timestamps=self._time_values, orientation='bottom')
         self.price_plot.setAxisItems({'bottom': date_axis})
         return df
 

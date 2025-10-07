@@ -676,13 +676,42 @@ class ExecutionMonitorWidget(QWidget):
         """Update the results display with integrated visualizer."""
         try:
             # Import the visualizer components
+            import pandas as pd
             from src.visualizer.windows.backtest_summary import BacktestSummaryWindow
             from src.visualizer.models import BacktestResultModel
 
             # Get OHLC data if available
             ohlc_data = None
             if hasattr(self.backtest_model, 'get_ohlc_data'):
-                ohlc_data = self.backtest_model.get_ohlc_data()
+                raw_ohlc_data = self.backtest_model.get_ohlc_data()
+                if raw_ohlc_data is not None and not raw_ohlc_data.empty:
+                    # Process OHLC data to ensure proper datetime index
+                    ohlc_data = raw_ohlc_data.copy()
+                    
+                    # Check if we have a datetime index
+                    if not isinstance(ohlc_data.index, pd.DatetimeIndex):
+                        # Try to use datetime column if it exists
+                        if 'datetime' in ohlc_data.columns:
+                            # Convert datetime column to proper datetime type first
+                            ohlc_data['datetime'] = pd.to_datetime(ohlc_data['datetime'])
+                            ohlc_data = ohlc_data.set_index('datetime')
+                        elif 'time' in ohlc_data.columns:
+                            # Try 'time' column as well
+                            ohlc_data['time'] = pd.to_datetime(ohlc_data['time'])
+                            ohlc_data = ohlc_data.set_index('time')
+                    
+                    # Ensure the index is properly formatted and timezone-naive
+                    if isinstance(ohlc_data.index, pd.DatetimeIndex):
+                        # Remove timezone info if present
+                        if ohlc_data.index.tz is not None:
+                            ohlc_data.index = ohlc_data.index.tz_localize(None)
+                        
+                        # Sort by datetime to ensure proper chronological order
+                        ohlc_data = ohlc_data.sort_index()
+                        
+                        # Ensure numeric 'time' column exists for plotting
+                        if 'time' not in ohlc_data.columns:
+                            ohlc_data['time'] = list(range(len(ohlc_data)))
 
             # Create the visualizer model
             model = BacktestResultModel(
@@ -1114,9 +1143,13 @@ class ExecutionMonitorWidget(QWidget):
                     if not isinstance(processed_ohlc_data.index, pd.DatetimeIndex):
                         # Try to use datetime column if it exists
                         if 'datetime' in processed_ohlc_data.columns:
-                            processed_ohlc_data = processed_ohlc_data.set_index(
-                                'datetime'
-                            )
+                            # Convert datetime column to proper datetime type first
+                            processed_ohlc_data['datetime'] = pd.to_datetime(processed_ohlc_data['datetime'])
+                            processed_ohlc_data = processed_ohlc_data.set_index('datetime')
+                        elif 'time' in processed_ohlc_data.columns:
+                            # Try 'time' column as well
+                            processed_ohlc_data['time'] = pd.to_datetime(processed_ohlc_data['time'])
+                            processed_ohlc_data = processed_ohlc_data.set_index('time')
                         else:
                             # Create a dummy datetime index if none exists
                             processed_ohlc_data.index = pd.date_range(
@@ -1125,11 +1158,18 @@ class ExecutionMonitorWidget(QWidget):
                                 freq='1H',
                             )
 
-                    # Ensure the index is properly formatted
+                    # Ensure the index is properly formatted and timezone-naive
                     if isinstance(processed_ohlc_data.index, pd.DatetimeIndex):
-                        processed_ohlc_data.index = (
-                            processed_ohlc_data.index.tz_localize(None)
-                        )
+                        # Remove timezone info if present
+                        if processed_ohlc_data.index.tz is not None:
+                            processed_ohlc_data.index = processed_ohlc_data.index.tz_localize(None)
+                        
+                        # Sort by datetime to ensure proper chronological order
+                        processed_ohlc_data = processed_ohlc_data.sort_index()
+                        
+                        # Ensure numeric 'time' column exists for plotting
+                        if 'time' not in processed_ohlc_data.columns:
+                            processed_ohlc_data['time'] = list(range(len(processed_ohlc_data)))
 
                 window = show_candlestick_with_trades(
                     ohlc_data=processed_ohlc_data,
@@ -1224,9 +1264,11 @@ class ExecutionMonitorWidget(QWidget):
 
                 pnl_item = QTableWidgetItem(f"{pnl:.2f}")
                 if pnl > 0:
-                    pnl_item.setStyleSheet("color: #00ff00;")
+                    from PySide6.QtGui import QColor
+                    pnl_item.setForeground(QColor("#00ff00"))
                 elif pnl < 0:
-                    pnl_item.setStyleSheet("color: #ff0000;")
+                    from PySide6.QtGui import QColor
+                    pnl_item.setForeground(QColor("#ff0000"))
                 trades_table.setItem(i, 5, pnl_item)
 
             # Adjust column widths
