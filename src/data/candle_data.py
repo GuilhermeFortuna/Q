@@ -151,33 +151,49 @@ class CandleData(MarketData):
         use_tick_volume: Optional[bool] = False,
         mt5_symbol: str | None = None,
         timeframe: str | None = None,
-    ) -> None:
-        error_message = f'Error importing data for symbol {mt5_symbol} from MT5.: {mt5.last_error()}'
-
+    ) -> pd.DataFrame:
         # Initialize connection to mt5 terminal with default credentials
-        mt5.initialize()
+        if not mt5.initialize():
+            error_msg = f"Failed to initialize MT5 connection: {mt5.last_error()}"
+            print(error_msg)
+            raise ConnectionError(error_msg)
 
         mt5_symbol = self.symbol if mt5_symbol is None else mt5_symbol
         if timeframe is not None:
             self.timeframe = timeframe
         else:
             timeframe = self.timeframe
+            
+        df = pd.DataFrame()
         try:
-            df = CandleData.format_candle_data_from_mt5(
-                data=mt5.copy_rates_range(
-                    mt5_symbol, TIMEFRAMES[timeframe].mt5, date_from, date_to
-                )
+            # Check if symbol exists
+            symbol_info = mt5.symbol_info(mt5_symbol)
+            if symbol_info is None:
+                error_msg = f"Symbol {mt5_symbol} not found in MT5. Available symbols: {mt5.symbols_get()[:5] if mt5.symbols_get() else 'None'}"
+                print(error_msg)
+                raise ValueError(error_msg)
+            
+            # Get rates from MT5
+            rates = mt5.copy_rates_range(
+                mt5_symbol, TIMEFRAMES[timeframe].mt5, date_from, date_to
             )
-        except:
-            print(f'Error importing data for symbol {mt5_symbol} from MT5.')
-            df = pd.DataFrame()
-
+            
+            if rates is None or len(rates) == 0:
+                error_msg = f"No data returned from MT5 for symbol {mt5_symbol}, timeframe {timeframe}, from {date_from} to {date_to}. MT5 error: {mt5.last_error()}"
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            df = CandleData.format_candle_data_from_mt5(data=rates)
+            
+        except Exception as e:
+            error_msg = f'Error importing data for symbol {mt5_symbol} from MT5: {str(e)}. MT5 error: {mt5.last_error()}'
+            print(error_msg)
+            raise ValueError(error_msg)
         finally:
-            if df.empty:
-                print(error_message)
             mt5.shutdown()
 
         self.df = df
+        return df
 
     @staticmethod
     def format_candle_data_from_mt5(

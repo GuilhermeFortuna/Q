@@ -746,8 +746,11 @@ class DataConfigWidget(QWidget):
 
             elif config.source_type.lower() == "mt5":
                 # MT5 import - delegate to CandleData if available
-                date_from = config.date_from
-                date_to = config.date_to
+                # Convert date objects to datetime objects for MT5
+                from datetime import datetime, time
+                date_from = datetime.combine(config.date_from, time.min) if config.date_from else None
+                date_to = datetime.combine(config.date_to, time.max) if config.date_to else None
+                
                 candle_data = CandleData(config.symbol, config.timeframe)
                 df = candle_data.import_from_mt5(
                     mt5_symbol=config.symbol,
