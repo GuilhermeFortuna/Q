@@ -401,16 +401,19 @@ class ExecutionMonitorWidget(QWidget):
         return widget
 
     def _create_results_tab(self) -> QWidget:
-        """Create the results display tab."""
+        """Create the results display tab with integrated visualizer."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setContentsMargins(5, 5, 5, 5)
 
-        # Results will be populated when backtest completes
-        self.results_label = QLabel("No results available")
-        self.results_label.setAlignment(Qt.AlignCenter)
-        self.results_label.setStyleSheet("color: #888; font-size: 14px;")
-        layout.addWidget(self.results_label)
+        # Create a placeholder widget that will be replaced with visualizer content
+        self.results_placeholder = QLabel("No results available")
+        self.results_placeholder.setAlignment(Qt.AlignCenter)
+        self.results_placeholder.setStyleSheet("color: #888; font-size: 14px;")
+        layout.addWidget(self.results_placeholder)
+
+        # Store reference for the visualizer widget
+        self.results_visualizer_widget = None
 
         return widget
 
@@ -552,7 +555,18 @@ class ExecutionMonitorWidget(QWidget):
 
     def _clear_results(self):
         """Clear the results display."""
-        self.results_label.setText("No results available")
+        # Clear results display
+        if self.results_visualizer_widget is not None:
+            self.results_visualizer_widget.setParent(None)
+            self.results_visualizer_widget = None
+        
+        if self.results_placeholder is None:
+            self.results_placeholder = QLabel("No results available")
+            self.results_placeholder.setAlignment(Qt.AlignCenter)
+            self.results_placeholder.setStyleSheet("color: #888; font-size: 14px;")
+            self.results_tab.layout().addWidget(self.results_placeholder)
+        else:
+            self.results_placeholder.setText("No results available")
         self.execution_controller.clear_results()
         self.log_widget.add_log_message("Results cleared")
 
@@ -625,32 +639,305 @@ class ExecutionMonitorWidget(QWidget):
             }
 
     def _update_results_display(self, results):
-        """Update the results display."""
+        """Update the results display with integrated visualizer."""
         try:
-            # Get summary statistics
-            summary = self.execution_controller.get_backtest_summary()
-            if summary:
-                results_text = "Backtest Results Summary\n"
-                results_text += "=" * 50 + "\n\n"
-
-                for key, value in summary.items():
-                    if isinstance(value, (int, float)):
-                        if "BRL" in key:
-                            results_text += f"{key}: R$ {value:,.2f}\n"
-                        else:
-                            results_text += f"{key}: {value:.2f}\n"
-                    else:
-                        results_text += f"{key}: {value}\n"
-
-                self.results_label.setText(results_text)
-                self.results_label.setStyleSheet(
-                    "color: #fff; font-size: 11px; font-family: 'Consolas', 'Courier New', monospace;"
-                )
-            else:
-                self.results_label.setText(
-                    "Results available but summary not generated"
-                )
+            # Import the visualizer components
+            from src.visualizer.windows.backtest_summary import BacktestSummaryWindow
+            from src.visualizer.models import BacktestResultModel
+            
+            # Get OHLC data if available
+            ohlc_data = None
+            if hasattr(self.backtest_model, 'get_ohlc_data'):
+                ohlc_data = self.backtest_model.get_ohlc_data()
+            
+            # Create the visualizer model
+            model = BacktestResultModel(
+                registry=results, 
+                result=results.result if hasattr(results, 'result') else results,
+                ohlc_df=ohlc_data
+            )
+            
+            # Remove the placeholder
+            if self.results_placeholder is not None:
+                self.results_placeholder.setParent(None)
+                self.results_placeholder = None
+            
+            # Create the visualizer widget (without the main window wrapper)
+            visualizer_widget = self._create_visualizer_widget(model)
+            
+            # Add it to the results tab layout
+            results_layout = self.results_tab.layout()
+            results_layout.addWidget(visualizer_widget)
+            
+            # Store reference
+            self.results_visualizer_widget = visualizer_widget
 
         except Exception as e:
-            self.results_label.setText(f"Error displaying results: {str(e)}")
-            self.results_label.setStyleSheet("color: #ff4444;")
+            # Fallback to simple text display
+            if self.results_placeholder is not None:
+                self.results_placeholder.setText(f"Error displaying results: {str(e)}")
+                self.results_placeholder.setStyleSheet("color: #ff4444;")
+            else:
+                # Create a new placeholder if needed
+                self.results_placeholder = QLabel(f"Error displaying results: {str(e)}")
+                self.results_placeholder.setAlignment(Qt.AlignCenter)
+                self.results_placeholder.setStyleSheet("color: #ff4444; font-size: 14px;")
+                self.results_tab.layout().addWidget(self.results_placeholder)
+
+    def _create_visualizer_widget(self, model):
+        """Create a visualizer widget from the BacktestResultModel."""
+        from src.visualizer.windows.backtest_summary import (
+            KPIGroupWidget, MiniChartWidget, MonthlyResultsWidget
+        )
+        from PySide6.QtWidgets import QScrollArea, QSplitter
+        
+        # Create a container widget
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.setSpacing(10)
+        
+        # Create splitter for main content
+        splitter = QSplitter(Qt.Horizontal)
+        layout.addWidget(splitter)
+        
+        # Left panel: KPIs
+        kpi_widget = self._create_kpi_panel(model)
+        splitter.addWidget(kpi_widget)
+        
+        # Right panel: Charts and monthly results
+        charts_widget = self._create_charts_panel(model)
+        splitter.addWidget(charts_widget)
+        
+        # Set splitter proportions
+        splitter.setStretchFactor(0, 2)  # KPIs take 2/3 of space
+        splitter.setStretchFactor(1, 1)  # Charts take 1/3 of space
+        
+        return container
+    
+    def _create_kpi_panel(self, model):
+        """Create the KPI panel with grouped metrics."""
+        from PySide6.QtWidgets import QScrollArea
+        from src.visualizer.windows.backtest_summary import KPIGroupWidget
+        
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        kpi_container = QWidget()
+        kpi_layout = QVBoxLayout(kpi_container)
+        kpi_layout.setSpacing(15)
+        
+        # Define KPI groups
+        kpi_groups = self._get_kpi_groups(model)
+        
+        # Create group widgets
+        for group_title, kpis in kpi_groups:
+            if kpis:  # Only create group if it has KPIs
+                group_widget = KPIGroupWidget(group_title, kpis)
+                kpi_layout.addWidget(group_widget)
+        
+        kpi_layout.addStretch()
+        scroll_area.setWidget(kpi_container)
+        
+        return scroll_area
+    
+    def _create_charts_panel(self, model):
+        """Create the charts panel with equity curve, drawdown, and monthly results."""
+        from src.visualizer.windows.backtest_summary import MiniChartWidget, MonthlyResultsWidget
+        
+        charts_container = QWidget()
+        charts_layout = QVBoxLayout(charts_container)
+        charts_layout.setSpacing(10)
+        
+        # Equity curve chart
+        equity_chart = MiniChartWidget("Equity Curve")
+        balance = model.balance
+        if balance is not None:
+            equity_chart.plot_series(balance, color='#00ff88')
+        charts_layout.addWidget(equity_chart)
+        
+        # Drawdown chart
+        drawdown_chart = MiniChartWidget("Drawdown")
+        drawdown = model.drawdown
+        if drawdown is not None:
+            drawdown_chart.plot_series(drawdown, color='#ff4444', fill=True)
+        charts_layout.addWidget(drawdown_chart)
+        
+        # Monthly results table
+        monthly_widget = MonthlyResultsWidget()
+        monthly_df = model.monthly_df
+        monthly_widget.set_data(monthly_df)
+        charts_layout.addWidget(monthly_widget)
+        
+        return charts_container
+    
+    def _get_kpi_groups(self, model):
+        """Get organized KPI groups with formatted values."""
+        result = model.result
+        
+        groups = [
+            (
+                "P&L",
+                [
+                    (
+                        "Net Balance",
+                        model.format_value(
+                            "net_balance (BRL)", result.get("net_balance (BRL)")
+                        ),
+                    ),
+                    (
+                        "Gross Balance",
+                        model.format_value(
+                            "gross_balance (BRL)", result.get("gross_balance (BRL)")
+                        ),
+                    ),
+                    (
+                        "Total Profit",
+                        model.format_value(
+                            "total_profit (BRL)", result.get("total_profit (BRL)")
+                        ),
+                    ),
+                    (
+                        "Total Loss",
+                        model.format_value(
+                            "total_loss (BRL)", result.get("total_loss (BRL)")
+                        ),
+                    ),
+                    (
+                        "Total Tax",
+                        model.format_value(
+                            "total_tax (BRL)", result.get("total_tax (BRL)")
+                        ),
+                    ),
+                    (
+                        "Total Cost",
+                        model.format_value(
+                            "total_cost (BRL)", result.get("total_cost (BRL)")
+                        ),
+                    ),
+                ],
+            ),
+            (
+                "Performance",
+                [
+                    (
+                        "Profit Factor",
+                        model.format_value(
+                            "profit_factor", result.get("profit_factor")
+                        ),
+                    ),
+                    (
+                        "Accuracy",
+                        model.format_value(
+                            "accuracy (%)", result.get("accuracy (%)")
+                        ),
+                    ),
+                    (
+                        "Mean Profit",
+                        model.format_value(
+                            "mean_profit (BRL)", result.get("mean_profit (BRL)")
+                        ),
+                    ),
+                    (
+                        "Mean Loss",
+                        model.format_value(
+                            "mean_loss (BRL)", result.get("mean_loss (BRL)")
+                        ),
+                    ),
+                    (
+                        "Mean Ratio",
+                        model.format_value("mean_ratio", result.get("mean_ratio")),
+                    ),
+                    (
+                        "Std Deviation",
+                        model.format_value(
+                            "standard_deviation", result.get("standard_deviation")
+                        ),
+                    ),
+                ],
+            ),
+            (
+                "Trades",
+                [
+                    (
+                        "Total Trades",
+                        model.format_value(
+                            "total_trades", result.get("total_trades")
+                        ),
+                    ),
+                    (
+                        "Positive Trades",
+                        model.format_value(
+                            "positive_trades", result.get("positive_trades")
+                        ),
+                    ),
+                    (
+                        "Negative Trades",
+                        model.format_value(
+                            "negative_trades", result.get("negative_trades")
+                        ),
+                    ),
+                ],
+            ),
+            (
+                "Risk",
+                [
+                    (
+                        "Max Drawdown",
+                        model.format_value(
+                            "maximum_drawdown (BRL)",
+                            result.get("maximum_drawdown (BRL)"),
+                        ),
+                    ),
+                    (
+                        "Drawdown %",
+                        model.format_value(
+                            "drawdown_relative (%)", result.get("drawdown_relative (%)")
+                        ),
+                    ),
+                    (
+                        "Final Drawdown %",
+                        model.format_value(
+                            "drawdown_final (%)", result.get("drawdown_final (%)")
+                        ),
+                    ),
+                ],
+            ),
+            (
+                "Period",
+                [
+                    (
+                        "Start Date",
+                        model.format_value("start_date", result.get("start_date")),
+                    ),
+                    (
+                        "End Date",
+                        model.format_value("end_date", result.get("end_date")),
+                    ),
+                    (
+                        "Duration",
+                        model.format_value("duration", result.get("duration")),
+                    ),
+                    (
+                        "Avg Monthly",
+                        model.format_value(
+                            "average_monthly_result (BRL)",
+                            result.get("average_monthly_result (BRL)"),
+                        ),
+                    ),
+                ],
+            ),
+        ]
+        
+        # Filter out groups with all None/empty values
+        filtered_groups = []
+        for group_title, kpis in groups:
+            valid_kpis = [
+                (label, value)
+                for label, value in kpis
+                if value != "—" and value is not None
+            ]
+            if valid_kpis:
+                filtered_groups.append((group_title, valid_kpis))
+        
+        return filtered_groups

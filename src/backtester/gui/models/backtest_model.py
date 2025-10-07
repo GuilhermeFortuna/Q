@@ -266,7 +266,10 @@ class BacktestModel(QObject):
         """Get OHLC data for visualization."""
         # Return the first loaded data source for visualization
         if self._loaded_data:
-            return next(iter(self._loaded_data.values()), None)
+            data_obj = next(iter(self._loaded_data.values()), None)
+            if data_obj is not None and hasattr(data_obj, 'df'):
+                # Return the DataFrame from the data object
+                return data_obj.df
         return None
 
     def store_loaded_data(self, source_id: str, data: Any) -> None:
