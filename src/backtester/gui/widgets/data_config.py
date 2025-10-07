@@ -163,42 +163,13 @@ class DataSourceWidget(QWidget):
         self._update_ui_visibility()
 
     def _apply_styling(self):
-        """Apply styling to the widget."""
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
         self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #555;
-                border-radius: 8px;
-                margin-top: 1ex;
-                padding-top: 10px;
-            }
-            QComboBox, QLineEdit, QDateEdit {
-                background-color: #2b2b2b;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 4px;
-            }
-            QPushButton {
-                background-color: #0066cc;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0088ff;
-            }
-            QPushButton:pressed {
-                background-color: #004499;
-            }
-        """
+            theme.get_widget_base_stylesheet() +
+            theme.get_groupbox_stylesheet() +
+            theme.get_form_stylesheet() +
+            theme.get_button_stylesheet("primary")
         )
 
     def _on_source_type_changed(self, source_type: str):
@@ -292,39 +263,12 @@ class DataPreviewWidget(QWidget):
         layout.addWidget(self.stats_text)
 
     def _apply_styling(self):
-        """Apply styling to the widget."""
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
         self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-            QTableWidget {
-                background-color: #2b2b2b;
-                color: #fff;
-                border: 1px solid #444;
-                gridline-color: #444;
-            }
-            QTableWidget::item {
-                padding: 4px;
-            }
-            QTableWidget::item:selected {
-                background-color: #0066cc;
-            }
-            QHeaderView::section {
-                background-color: #3c3c3c;
-                color: #fff;
-                border: 1px solid #555;
-                font-weight: bold;
-                padding: 4px;
-            }
-            QTextEdit {
-                background-color: #2b2b2b;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 3px;
-            }
-        """
+            theme.get_widget_base_stylesheet() +
+            theme.get_table_stylesheet() +
+            theme.get_form_stylesheet()
         )
 
     def set_data(self, data, source_id: str):
@@ -527,64 +471,14 @@ class DataConfigWidget(QWidget):
         )
 
     def _apply_styling(self):
-        """Apply styling to the widget."""
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
         self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-            QTabWidget::pane {
-                border: 1px solid #444444;
-                background-color: #2b2b2b;
-            }
-            QTabBar::tab {
-                background-color: #3c3c3c;
-                color: #ffffff;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background-color: #0066cc;
-            }
-            QTabBar::tab:hover {
-                background-color: #555555;
-            }
-            QScrollArea {
-                border: 1px solid #444;
-                border-radius: 4px;
-                background-color: #2b2b2b;
-            }
-            QPushButton {
-                background-color: #0066cc;
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 4px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0088ff;
-            }
-            QPushButton:pressed {
-                background-color: #004499;
-            }
-            QComboBox {
-                background-color: #2b2b2b;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 4px;
-            }
-            QTextEdit {
-                background-color: #2b2b2b;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 3px;
-            }
-        """
+            theme.get_widget_base_stylesheet() +
+            theme.get_main_window_stylesheet() +
+            theme.get_scroll_area_stylesheet() +
+            theme.get_button_stylesheet("primary") +
+            theme.get_form_stylesheet()
         )
 
     def _add_data_source(self):

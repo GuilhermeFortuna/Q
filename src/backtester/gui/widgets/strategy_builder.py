@@ -78,33 +78,16 @@ class SignalTableWidget(QTableWidget):
         self.cellClicked.connect(self._on_cell_clicked)
     
     def _apply_styling(self):
-        """Apply styling to the table."""
-        self.setStyleSheet("""
-            QTableWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-                border: 1px solid #444;
-                border-radius: 3px;
-                gridline-color: #444;
-            }
-            QTableWidget::item {
-                padding: 8px;
-                border: none;
-            }
-            QTableWidget::item:selected {
-                background-color: #0066cc;
-            }
-            QHeaderView::section {
-                background-color: #2b2b2b;
-                color: #fff;
-                padding: 8px;
-                border: 1px solid #444;
-                font-weight: bold;
-            }
+        """Apply JetBrains-inspired styling to the table."""
+        from ..theme import theme
+        self.setStyleSheet(
+            theme.get_table_stylesheet() +
+            """
             QCheckBox {
-                color: #fff;
+                color: #BBBBBB;
             }
-        """)
+            """
+        )
     
     def add_signal_row(self, signal_config: SignalConfig):
         """Add a signal row to the table."""
@@ -458,40 +441,13 @@ class StrategyBuilderWidget(QWidget):
         layout.addWidget(main_splitter)
     
     def _apply_styling(self):
-        """Apply styling to the widget."""
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #555;
-                border-radius: 8px;
-                margin-top: 1ex;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-            QPushButton {
-                background-color: #0066cc;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0088ff;
-            }
-            QPushButton:disabled {
-                background-color: #555;
-                color: #888;
-            }
-        """)
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
+        self.setStyleSheet(
+            theme.get_widget_base_stylesheet() +
+            theme.get_groupbox_stylesheet() +
+            theme.get_button_stylesheet("primary")
+        )
     
     def _connect_signals(self):
         """Connect widget signals."""

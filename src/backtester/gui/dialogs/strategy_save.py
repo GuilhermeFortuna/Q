@@ -15,6 +15,7 @@ class StrategySaveDialog(QDialog):
         self.setWindowTitle("Save Strategy")
         self.setModal(True)
         self._setup_ui()
+        self._apply_styling()
     
     def _setup_ui(self):
         """Setup the dialog UI."""
@@ -46,5 +47,14 @@ class StrategySaveDialog(QDialog):
     def get_strategy_description(self):
         """Get the strategy description."""
         return self.description_edit.text()
+    
+    def _apply_styling(self):
+        """Apply JetBrains-inspired styling to the dialog."""
+        from ..theme import theme
+        self.setStyleSheet(
+            theme.get_dialog_stylesheet() +
+            theme.get_form_stylesheet() +
+            theme.get_button_stylesheet("primary")
+        )
 
 

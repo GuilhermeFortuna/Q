@@ -37,6 +37,7 @@ class BacktestConfigWidget(QWidget):
         self._setup_ui()
         self._connect_signals()
         self._load_config()
+        self._apply_styling()
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -299,6 +300,17 @@ class BacktestConfigWidget(QWidget):
         # Update the model
         self.backtest_model.update_backtest_config(config)
         self.config_changed.emit()
+    
+    def _apply_styling(self):
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
+        self.setStyleSheet(
+            theme.get_widget_base_stylesheet() +
+            theme.get_groupbox_stylesheet() +
+            theme.get_form_stylesheet() +
+            theme.get_button_stylesheet("primary") +
+            theme.get_scroll_area_stylesheet()
+        )
     
     def _on_reset_clicked(self):
         """Handle reset to defaults button click."""

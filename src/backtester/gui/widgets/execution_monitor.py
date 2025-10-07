@@ -66,19 +66,9 @@ class MetricsCardWidget(QFrame):
         layout.addWidget(self.value_label)
 
     def _apply_styling(self):
-        """Apply styling to the metrics card."""
-        self.setStyleSheet(
-            """
-            MetricsCardWidget {
-                background-color: #2b2b2b;
-                border: 1px solid #444;
-                border-radius: 6px;
-            }
-            MetricsCardWidget:hover {
-                border-color: #666;
-            }
-        """
-        )
+        """Apply JetBrains-inspired styling to the metrics card."""
+        from ..theme import theme
+        self.setStyleSheet(theme.get_card_stylesheet())
         self.setFixedSize(120, 80)
 
     def set_value(self, value: str):
@@ -134,15 +124,9 @@ class LiveMetricsWidget(QWidget):
             self.metrics_layout.addWidget(card, row, col)
 
     def _apply_styling(self):
-        """Apply styling to the widget."""
-        self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-        """
-        )
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
+        self.setStyleSheet(theme.get_widget_base_stylesheet())
 
     def update_metrics(self, metrics: Dict[str, Any]):
         """Update the metrics display."""
@@ -200,24 +184,11 @@ class ProgressWidget(QWidget):
         layout.addWidget(self.eta_label)
 
     def _apply_styling(self):
-        """Apply styling to the widget."""
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
         self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-            QProgressBar {
-                border: 1px solid #555;
-                border-radius: 3px;
-                text-align: center;
-                background-color: #3c3c3c;
-            }
-            QProgressBar::chunk {
-                background-color: #0066cc;
-                border-radius: 2px;
-            }
-        """
+            theme.get_widget_base_stylesheet() +
+            theme.get_main_window_stylesheet()
         )
 
     def set_progress(self, progress: int):
@@ -263,33 +234,18 @@ class LogWidget(QWidget):
         layout.addWidget(clear_btn)
 
     def _apply_styling(self):
-        """Apply styling to the widget."""
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
         self.setStyleSheet(
+            theme.get_widget_base_stylesheet() +
+            theme.get_form_stylesheet() +
+            theme.get_button_stylesheet("primary") +
             """
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
             QTextEdit {
-                background-color: #2b2b2b;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 3px;
                 font-family: 'Consolas', 'Courier New', monospace;
                 font-size: 10px;
             }
-            QPushButton {
-                background-color: #0066cc;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0088ff;
-            }
-        """
+            """
         )
 
     def add_log_message(self, message: str):
@@ -446,52 +402,15 @@ class ExecutionMonitorWidget(QWidget):
         # Run backtest button
         self.run_btn = QPushButton("Run Backtest")
         self.run_btn.clicked.connect(self._run_backtest)
-        self.run_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #00aa00;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #00cc00;
-            }
-            QPushButton:disabled {
-                background-color: #555;
-                color: #999;
-            }
-        """
-        )
+        from ..theme import theme
+        self.run_btn.setStyleSheet(theme.get_button_stylesheet("success"))
         button_layout.addWidget(self.run_btn)
 
         # Stop backtest button
         self.stop_btn = QPushButton("Stop Backtest")
         self.stop_btn.clicked.connect(self._stop_backtest)
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #aa0000;
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-                font-size: 12px;
-            }
-            QPushButton:hover {
-                background-color: #cc0000;
-            }
-            QPushButton:disabled {
-                background-color: #555;
-                color: #999;
-            }
-        """
-        )
+        self.stop_btn.setStyleSheet(theme.get_button_stylesheet("danger"))
         button_layout.addWidget(self.stop_btn)
 
         # Clear results button
@@ -511,32 +430,11 @@ class ExecutionMonitorWidget(QWidget):
         self.execution_controller.status_updated.connect(self._on_status_updated)
 
     def _apply_styling(self):
-        """Apply styling to the widget."""
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
         self.setStyleSheet(
-            """
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-            QTabWidget::pane {
-                border: 1px solid #444444;
-                background-color: #2b2b2b;
-            }
-            QTabBar::tab {
-                background-color: #3c3c3c;
-                color: #ffffff;
-                padding: 8px 16px;
-                margin-right: 2px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background-color: #0066cc;
-            }
-            QTabBar::tab:hover {
-                background-color: #555555;
-            }
-        """
+            theme.get_widget_base_stylesheet() +
+            theme.get_main_window_stylesheet()
         )
 
     def _run_backtest(self):
@@ -1215,29 +1113,8 @@ class ExecutionMonitorWidget(QWidget):
             )
 
             # Style the table
-            trades_table.setStyleSheet(
-                """
-                QTableWidget {
-                    background-color: #2b2b2b;
-                    color: #fff;
-                    border: 1px solid #444;
-                    gridline-color: #444;
-                }
-                QTableWidget::item {
-                    padding: 4px;
-                }
-                QTableWidget::item:selected {
-                    background-color: #0066cc;
-                }
-                QHeaderView::section {
-                    background-color: #3c3c3c;
-                    color: #fff;
-                    border: 1px solid #555;
-                    font-weight: bold;
-                    padding: 4px;
-                }
-            """
-            )
+            from ..theme import theme
+            trades_table.setStyleSheet(theme.get_table_stylesheet())
 
             # Fill the table with trade data
             for i, (idx, trade) in enumerate(trades_df.head(10).iterrows()):

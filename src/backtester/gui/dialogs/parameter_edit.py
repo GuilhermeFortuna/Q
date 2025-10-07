@@ -18,6 +18,7 @@ class ParameterEditDialog(QDialog):
         self.setWindowTitle(f"Edit {signal_name} Parameters")
         self.setModal(True)
         self._setup_ui()
+        self._apply_styling()
     
     def _setup_ui(self):
         """Setup the dialog UI."""
@@ -100,6 +101,15 @@ class ParameterEditDialog(QDialog):
             else:
                 values[param_name] = widget.text()
         return values
+    
+    def _apply_styling(self):
+        """Apply JetBrains-inspired styling to the dialog."""
+        from ..theme import theme
+        self.setStyleSheet(
+            theme.get_dialog_stylesheet() +
+            theme.get_form_stylesheet() +
+            theme.get_button_stylesheet("primary")
+        )
     
     def get_parameters(self):
         """Alias for get_parameter_values for compatibility."""

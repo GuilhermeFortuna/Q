@@ -286,47 +286,14 @@ class SignalLibraryWidget(QWidget):
         self.signal_list.itemSelectionChanged.connect(self._on_selection_changed)
     
     def _apply_styling(self):
-        """Apply styling to the widget."""
-        self.setStyleSheet("""
-            QWidget {
-                background-color: #1e1e1e;
-                color: #fff;
-            }
-            QGroupBox {
-                font-weight: bold;
-                border: 2px solid #555;
-                border-radius: 8px;
-                margin-top: 1ex;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-            }
-            QLineEdit, QComboBox {
-                background-color: #2b2b2b;
-                color: #fff;
-                border: 1px solid #555;
-                border-radius: 3px;
-                padding: 4px;
-            }
-            QPushButton {
-                background-color: #0066cc;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 3px;
-                font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #0088ff;
-            }
-            QPushButton:disabled {
-                background-color: #555;
-                color: #888;
-            }
-        """)
+        """Apply JetBrains-inspired styling to the widget."""
+        from ..theme import theme
+        self.setStyleSheet(
+            theme.get_widget_base_stylesheet() +
+            theme.get_groupbox_stylesheet() +
+            theme.get_form_stylesheet() +
+            theme.get_button_stylesheet("primary")
+        )
     
     def _populate_signals(self):
         """Populate the signal list with available signals."""
