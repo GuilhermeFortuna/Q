@@ -166,8 +166,10 @@ class SignalLibraryWidget(QWidget):
         
         # Refresh button
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.setFixedSize(60, 24)
+        refresh_btn.setFixedSize(80, 28)
         refresh_btn.clicked.connect(self._populate_signals)
+        from ..theme import theme
+        refresh_btn.setStyleSheet(theme.get_button_stylesheet("primary"))
         header_layout.addWidget(refresh_btn)
         
         layout.addLayout(header_layout)
@@ -210,19 +212,23 @@ class SignalLibraryWidget(QWidget):
         
         # Signal list
         self.signal_list = QListWidget()
-        self.signal_list.setStyleSheet("""
-            QListWidget {
-                background-color: #1e1e1e;
-                border: 1px solid #444;
+        from ..theme import theme
+        self.signal_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {theme.BACKGROUND_MAIN};
+                border: 1px solid {theme.BORDER_DEFAULT};
                 border-radius: 3px;
-            }
-            QListWidget::item {
+            }}
+            QListWidget::item {{
                 border: none;
-                padding: 0px;
-            }
-            QListWidget::item:selected {
-                background-color: #0066cc;
-            }
+                padding: 4px;
+            }}
+            QListWidget::item:selected {{
+                background-color: {theme.ACCENT_SELECTION};
+            }}
+            QListWidget::item:hover {{
+                background-color: {theme.BACKGROUND_ELEVATED};
+            }}
         """)
         list_layout.addWidget(self.signal_list)
         

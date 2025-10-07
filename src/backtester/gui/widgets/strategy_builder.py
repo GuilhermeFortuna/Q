@@ -69,9 +69,9 @@ class SignalTableWidget(QTableWidget):
         header.setSectionResizeMode(3, QHeaderView.Stretch)  # Parameters
         header.setSectionResizeMode(4, QHeaderView.Fixed)  # Actions
         
-        self.setColumnWidth(0, 60)   # Enabled
+        self.setColumnWidth(0, 70)   # Enabled
         self.setColumnWidth(2, 80)   # Role
-        self.setColumnWidth(4, 120)  # Actions
+        self.setColumnWidth(4, 130)  # Actions
         
         # Connect signals
         self.cellChanged.connect(self._on_cell_changed)
@@ -94,14 +94,22 @@ class SignalTableWidget(QTableWidget):
         row = self.rowCount()
         self.insertRow(row)
         
-        # Enabled checkbox
+        # Enabled checkbox (centered in cell)
         enabled_checkbox = QCheckBox()
         enabled_checkbox.setChecked(signal_config.enabled)
         enabled_checkbox.stateChanged.connect(
             lambda state, signal_id=signal_config.signal_id: 
             self.signal_toggled.emit(signal_id, state == Qt.Checked)
         )
-        self.setCellWidget(row, 0, enabled_checkbox)
+        
+        # Create a container widget to center the checkbox
+        checkbox_container = QWidget()
+        checkbox_layout = QHBoxLayout(checkbox_container)
+        checkbox_layout.addWidget(enabled_checkbox)
+        checkbox_layout.setAlignment(Qt.AlignCenter)
+        checkbox_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.setCellWidget(row, 0, checkbox_container)
         
         # Signal name
         signal_name_item = QTableWidgetItem(signal_config.signal_type)
@@ -158,41 +166,45 @@ class SignalTableWidget(QTableWidget):
         """Create the actions widget for a signal row."""
         widget = QWidget()
         layout = QHBoxLayout(widget)
-        layout.setContentsMargins(2, 2, 2, 2)
-        layout.setSpacing(2)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignCenter)
         
-        # Edit button
+        # Edit button with theme green
+        from ..theme import theme
         edit_btn = QPushButton("Edit")
-        edit_btn.setFixedSize(40, 24)
-        edit_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #0066cc;
-                color: white;
+        edit_btn.setFixedSize(50, 26)
+        edit_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme.ACCENT_PRIMARY};
+                color: {theme.BACKGROUND_MAIN};
                 border: none;
                 border-radius: 3px;
                 font-size: 10px;
-            }
-            QPushButton:hover {
-                background-color: #0088ff;
-            }
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {theme.ACCENT_HOVER};
+            }}
         """)
         edit_btn.clicked.connect(lambda: self.signal_edited.emit(signal_id))
         layout.addWidget(edit_btn)
         
         # Remove button
         remove_btn = QPushButton("Remove")
-        remove_btn.setFixedSize(50, 24)
-        remove_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #ff4444;
-                color: white;
+        remove_btn.setFixedSize(60, 26)
+        remove_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {theme.ERROR};
+                color: {theme.BACKGROUND_MAIN};
                 border: none;
                 border-radius: 3px;
                 font-size: 10px;
-            }
-            QPushButton:hover {
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
                 background-color: #ff6666;
-            }
+            }}
         """)
         remove_btn.clicked.connect(lambda: self.signal_removed.emit(signal_id))
         layout.addWidget(remove_btn)
@@ -263,8 +275,9 @@ class ValidationPanel(QFrame):
         header_layout.addStretch()
         
         # Status indicator
+        from ..theme import theme
         self.status_label = QLabel("✓ Valid")
-        self.status_label.setStyleSheet("color: #4CAF50; font-weight: bold;")
+        self.status_label.setStyleSheet(f"color: {theme.ACCENT_PRIMARY}; font-weight: bold;")
         header_layout.addWidget(self.status_label)
         
         layout.addLayout(header_layout)
@@ -296,9 +309,10 @@ class ValidationPanel(QFrame):
     
     def update_validation(self, is_valid: bool, errors: List[str]):
         """Update the validation display."""
+        from ..theme import theme
         if is_valid:
             self.status_label.setText("✓ Valid")
-            self.status_label.setStyleSheet("color: #4CAF50; font-weight: bold;")
+            self.status_label.setStyleSheet(f"color: {theme.ACCENT_PRIMARY}; font-weight: bold;")
             self.messages_text.clear()
         else:
             self.status_label.setText("✗ Invalid")
@@ -412,11 +426,13 @@ class StrategyBuilderWidget(QWidget):
         
         self.move_up_btn = QPushButton("Move Up")
         self.move_up_btn.setEnabled(False)
+        self.move_up_btn.setMinimumHeight(28)
         self.move_up_btn.clicked.connect(self._on_move_signal_up)
         table_actions_layout.addWidget(self.move_up_btn)
         
         self.move_down_btn = QPushButton("Move Down")
         self.move_down_btn.setEnabled(False)
+        self.move_down_btn.setMinimumHeight(28)
         self.move_down_btn.clicked.connect(self._on_move_signal_down)
         table_actions_layout.addWidget(self.move_down_btn)
         
@@ -424,7 +440,10 @@ class StrategyBuilderWidget(QWidget):
         
         self.clear_signals_btn = QPushButton("Clear All")
         self.clear_signals_btn.setEnabled(False)
+        self.clear_signals_btn.setMinimumSize(100, 32)
         self.clear_signals_btn.clicked.connect(self._on_clear_signals)
+        from ..theme import theme
+        self.clear_signals_btn.setStyleSheet(theme.get_button_stylesheet("secondary"))
         table_actions_layout.addWidget(self.clear_signals_btn)
         
         signals_layout.addLayout(table_actions_layout)
