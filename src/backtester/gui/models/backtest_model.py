@@ -48,6 +48,7 @@ class BacktestConfig:
     # Execution settings
     slippage: float = 0.0
     bypass_first_exit_check: bool = False
+    always_active: bool = True
 
     # Additional parameters
     commission: float = 0.0
@@ -354,6 +355,7 @@ class BacktestModel(QObject):
                     ),
                     "slippage": self._backtest_config.slippage,
                     "bypass_first_exit_check": self._backtest_config.bypass_first_exit_check,
+                    "always_active": self._backtest_config.always_active,
                     "commission": self._backtest_config.commission,
                     "margin_requirement": self._backtest_config.margin_requirement,
                     "max_position_size": self._backtest_config.max_position_size,
@@ -424,6 +426,7 @@ class BacktestModel(QObject):
                 bypass_first_exit_check=backtest_data.get(
                     "bypass_first_exit_check", False
                 ),
+                always_active=backtest_data.get("always_active", True),
                 commission=backtest_data.get("commission", 0.0),
                 margin_requirement=backtest_data.get("margin_requirement", 0.0),
                 max_position_size=backtest_data.get("max_position_size"),

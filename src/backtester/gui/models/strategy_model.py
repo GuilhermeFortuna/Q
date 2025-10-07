@@ -103,6 +103,7 @@ class StrategyModel(QObject):
             self._initialize_signal_library()
         )
         self._validation_errors: List[str] = []
+        self._strategy_file_path: Optional[str] = None
 
     def _initialize_signal_library(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -304,6 +305,7 @@ class StrategyModel(QObject):
     def clear_strategy(self):
         """Clear the current strategy."""
         self._current_strategy = None
+        self._strategy_file_path = None
         self._validation_errors.clear()
         self.strategy_changed.emit()
         self.validation_changed.emit(True)
@@ -579,6 +581,14 @@ class StrategyModel(QObject):
         """Get the current validation errors."""
         return self._validation_errors.copy()
 
+    def get_strategy_file_path(self) -> Optional[str]:
+        """Get the current strategy file path."""
+        return self._strategy_file_path
+
+    def set_strategy_file_path(self, file_path: Optional[str]):
+        """Set the current strategy file path."""
+        self._strategy_file_path = file_path
+
     def _update_modified_time(self):
         """Update the modified timestamp of the current strategy."""
         if self._current_strategy:
@@ -592,7 +602,57 @@ class StrategyModel(QObject):
             return False
 
         try:
-            raise NotImplemented("Not yet implemented")
+            import json
+            from datetime import datetime
+
+            # Convert strategy config to dictionary
+            strategy_data = {
+                "version": "1.0",
+                "strategy": {
+                    "strategy_id": self._current_strategy.strategy_id,
+                    "name": self._current_strategy.name,
+                    "description": self._current_strategy.description,
+                    "created_at": self._current_strategy.created_at,
+                    "modified_at": self._current_strategy.modified_at,
+                    "signals": [],
+                    "combiners": self._current_strategy.combiners
+                }
+            }
+
+            # Convert signals to dictionary format
+            for signal_config in self._current_strategy.signals:
+                signal_data = {
+                    "signal_id": signal_config.signal_id,
+                    "signal_type": signal_config.signal_type,
+                    "role": signal_config.role.value,  # Convert enum to string
+                    "enabled": signal_config.enabled,
+                    "weight": signal_config.weight,
+                    "description": signal_config.description,
+                    "parameters": {}
+                }
+
+                # Convert parameters to dictionary format
+                for param_name, param in signal_config.parameters.items():
+                    signal_data["parameters"][param_name] = {
+                        "value": param.value,
+                        "type": param.parameter_type,
+                        "min_value": param.min_value,
+                        "max_value": param.max_value,
+                        "options": param.options,
+                        "required": param.required,
+                        "description": param.description
+                    }
+
+                strategy_data["strategy"]["signals"].append(signal_data)
+
+            # Write to file
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(strategy_data, f, indent=2, ensure_ascii=False)
+
+            # Update file path
+            self._strategy_file_path = file_path
+
+            return True
 
         except Exception as e:
             print(f"Error exporting strategy: {e}")
@@ -600,4 +660,75 @@ class StrategyModel(QObject):
 
     def import_strategy(self, file_path: str) -> bool:
         """Import a strategy from a file."""
-        raise NotImplemented("Not yet implemented")
+        try:
+            import json
+            from datetime import datetime
+
+            # Read and parse JSON file
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            # Validate file format
+            if "version" not in data or "strategy" not in data:
+                raise ValueError("Invalid strategy file format: missing version or strategy section")
+
+            strategy_data = data["strategy"]
+
+            # Create new strategy config
+            strategy_config = StrategyConfig(
+                strategy_id=strategy_data.get("strategy_id", ""),
+                name=strategy_data.get("name", "Imported Strategy"),
+                description=strategy_data.get("description", ""),
+                created_at=strategy_data.get("created_at", datetime.now().isoformat()),
+                modified_at=strategy_data.get("modified_at", datetime.now().isoformat()),
+                combiners=strategy_data.get("combiners", [])
+            )
+
+            # Import signals
+            for signal_data in strategy_data.get("signals", []):
+                # Convert role string back to enum
+                try:
+                    role = SignalRole(signal_data["role"])
+                except ValueError:
+                    print(f"Warning: Unknown signal role '{signal_data['role']}', using ENTRY")
+                    role = SignalRole.ENTRY
+
+                # Create signal config
+                signal_config = SignalConfig(
+                    signal_id=signal_data.get("signal_id", ""),
+                    signal_type=signal_data["signal_type"],  # Store as string
+                    role=role,
+                    enabled=signal_data.get("enabled", True),
+                    weight=signal_data.get("weight", 1.0),
+                    description=signal_data.get("description", ""),
+                    parameters={}
+                )
+
+                # Import parameters
+                for param_name, param_data in signal_data.get("parameters", {}).items():
+                    param = SignalParameter(
+                        name=param_name,
+                        value=param_data.get("value"),
+                        parameter_type=param_data.get("type", "str"),
+                        min_value=param_data.get("min_value"),
+                        max_value=param_data.get("max_value"),
+                        options=param_data.get("options"),
+                        description=param_data.get("description", ""),
+                        required=param_data.get("required", True)
+                    )
+                    signal_config.parameters[param_name] = param
+
+                strategy_config.signals.append(signal_config)
+
+            # Set as current strategy
+            self._current_strategy = strategy_config
+            self._strategy_file_path = file_path
+
+            # Emit signals
+            self.strategy_changed.emit()
+
+            return True
+
+        except Exception as e:
+            print(f"Error importing strategy: {e}")
+            return False
