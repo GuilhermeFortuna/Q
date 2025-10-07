@@ -72,7 +72,7 @@ class BacktestResultModel:
             return registry.trades_df
         elif hasattr(registry, 'trades'):
             trades = registry.trades
-            if isinstance(trades, pd.DataFrame):
+            if isinstance(trades, pd.DataFrame) and not trades.empty:
                 return trades
         return None
 

@@ -580,7 +580,7 @@ class ExecutionMonitorWidget(QWidget):
         if self.results_visualizer_widget is not None:
             self.results_visualizer_widget.setParent(None)
             self.results_visualizer_widget = None
-        
+
         if self.results_placeholder is None:
             self.results_placeholder = QLabel("No results available")
             self.results_placeholder.setAlignment(Qt.AlignCenter)
@@ -588,12 +588,12 @@ class ExecutionMonitorWidget(QWidget):
             self.results_tab.layout().addWidget(self.results_placeholder)
         else:
             self.results_placeholder.setText("No results available")
-        
+
         # Clear plot trades display
         if self.plot_trades_widget is not None:
             self.plot_trades_widget.setParent(None)
             self.plot_trades_widget = None
-        
+
         if self.plot_trades_placeholder is None:
             self.plot_trades_placeholder = QLabel("No trades data available")
             self.plot_trades_placeholder.setAlignment(Qt.AlignCenter)
@@ -678,31 +678,31 @@ class ExecutionMonitorWidget(QWidget):
             # Import the visualizer components
             from src.visualizer.windows.backtest_summary import BacktestSummaryWindow
             from src.visualizer.models import BacktestResultModel
-            
+
             # Get OHLC data if available
             ohlc_data = None
             if hasattr(self.backtest_model, 'get_ohlc_data'):
                 ohlc_data = self.backtest_model.get_ohlc_data()
-            
+
             # Create the visualizer model
             model = BacktestResultModel(
-                registry=results, 
+                registry=results,
                 result=results.result if hasattr(results, 'result') else results,
-                ohlc_df=ohlc_data
+                ohlc_df=ohlc_data,
             )
-            
+
             # Remove the placeholder
             if self.results_placeholder is not None:
                 self.results_placeholder.setParent(None)
                 self.results_placeholder = None
-            
+
             # Create the visualizer widget (without the main window wrapper)
             visualizer_widget = self._create_visualizer_widget(model)
-            
+
             # Add it to the results tab layout
             results_layout = self.results_tab.layout()
             results_layout.addWidget(visualizer_widget)
-            
+
             # Store reference
             self.results_visualizer_widget = visualizer_widget
 
@@ -718,100 +718,107 @@ class ExecutionMonitorWidget(QWidget):
                 # Create a new placeholder if needed
                 self.results_placeholder = QLabel(f"Error displaying results: {str(e)}")
                 self.results_placeholder.setAlignment(Qt.AlignCenter)
-                self.results_placeholder.setStyleSheet("color: #ff4444; font-size: 14px;")
+                self.results_placeholder.setStyleSheet(
+                    "color: #ff4444; font-size: 14px;"
+                )
                 self.results_tab.layout().addWidget(self.results_placeholder)
 
     def _create_visualizer_widget(self, model):
         """Create a visualizer widget from the BacktestResultModel."""
         from src.visualizer.windows.backtest_summary import (
-            KPIGroupWidget, MiniChartWidget, MonthlyResultsWidget
+            KPIGroupWidget,
+            MiniChartWidget,
+            MonthlyResultsWidget,
         )
         from PySide6.QtWidgets import QScrollArea, QSplitter
-        
+
         # Create a container widget
         container = QWidget()
         layout = QHBoxLayout(container)
         layout.setSpacing(10)
-        
+
         # Create splitter for main content
         splitter = QSplitter(Qt.Horizontal)
         layout.addWidget(splitter)
-        
+
         # Left panel: KPIs
         kpi_widget = self._create_kpi_panel(model)
         splitter.addWidget(kpi_widget)
-        
+
         # Right panel: Charts and monthly results
         charts_widget = self._create_charts_panel(model)
         splitter.addWidget(charts_widget)
-        
+
         # Set splitter proportions
         splitter.setStretchFactor(0, 2)  # KPIs take 2/3 of space
         splitter.setStretchFactor(1, 1)  # Charts take 1/3 of space
-        
+
         return container
-    
+
     def _create_kpi_panel(self, model):
         """Create the KPI panel with grouped metrics."""
         from PySide6.QtWidgets import QScrollArea
         from src.visualizer.windows.backtest_summary import KPIGroupWidget
-        
+
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        
+
         kpi_container = QWidget()
         kpi_layout = QVBoxLayout(kpi_container)
         kpi_layout.setSpacing(15)
-        
+
         # Define KPI groups
         kpi_groups = self._get_kpi_groups(model)
-        
+
         # Create group widgets
         for group_title, kpis in kpi_groups:
             if kpis:  # Only create group if it has KPIs
                 group_widget = KPIGroupWidget(group_title, kpis)
                 kpi_layout.addWidget(group_widget)
-        
+
         kpi_layout.addStretch()
         scroll_area.setWidget(kpi_container)
-        
+
         return scroll_area
-    
+
     def _create_charts_panel(self, model):
         """Create the charts panel with equity curve, drawdown, and monthly results."""
-        from src.visualizer.windows.backtest_summary import MiniChartWidget, MonthlyResultsWidget
-        
+        from src.visualizer.windows.backtest_summary import (
+            MiniChartWidget,
+            MonthlyResultsWidget,
+        )
+
         charts_container = QWidget()
         charts_layout = QVBoxLayout(charts_container)
         charts_layout.setSpacing(10)
-        
+
         # Equity curve chart
         equity_chart = MiniChartWidget("Equity Curve")
         balance = model.balance
         if balance is not None:
             equity_chart.plot_series(balance, color='#00ff88')
         charts_layout.addWidget(equity_chart)
-        
+
         # Drawdown chart
         drawdown_chart = MiniChartWidget("Drawdown")
         drawdown = model.drawdown
         if drawdown is not None:
             drawdown_chart.plot_series(drawdown, color='#ff4444', fill=True)
         charts_layout.addWidget(drawdown_chart)
-        
+
         # Monthly results table
         monthly_widget = MonthlyResultsWidget()
         monthly_df = model.monthly_df
         monthly_widget.set_data(monthly_df)
         charts_layout.addWidget(monthly_widget)
-        
+
         return charts_container
-    
+
     def _get_kpi_groups(self, model):
         """Get organized KPI groups with formatted values."""
         result = model.result
-        
+
         groups = [
             (
                 "P&L",
@@ -865,9 +872,7 @@ class ExecutionMonitorWidget(QWidget):
                     ),
                     (
                         "Accuracy",
-                        model.format_value(
-                            "accuracy (%)", result.get("accuracy (%)")
-                        ),
+                        model.format_value("accuracy (%)", result.get("accuracy (%)")),
                     ),
                     (
                         "Mean Profit",
@@ -898,9 +903,7 @@ class ExecutionMonitorWidget(QWidget):
                 [
                     (
                         "Total Trades",
-                        model.format_value(
-                            "total_trades", result.get("total_trades")
-                        ),
+                        model.format_value("total_trades", result.get("total_trades")),
                     ),
                     (
                         "Positive Trades",
@@ -965,7 +968,7 @@ class ExecutionMonitorWidget(QWidget):
                 ],
             ),
         ]
-        
+
         # Filter out groups with all None/empty values
         filtered_groups = []
         for group_title, kpis in groups:
@@ -976,7 +979,7 @@ class ExecutionMonitorWidget(QWidget):
             ]
             if valid_kpis:
                 filtered_groups.append((group_title, valid_kpis))
-        
+
         return filtered_groups
 
     def _update_plot_trades_display(self, results, ohlc_data):
@@ -985,46 +988,53 @@ class ExecutionMonitorWidget(QWidget):
             # Import the visualizer components
             from src.visualizer.windows.plot_trades import PlotTradesWindow
             from src.visualizer.models import BacktestResultModel
-            
+
             # Create the visualizer model to get trades data
             model = BacktestResultModel(
-                registry=results, 
+                registry=results,
                 result=results.result if hasattr(results, 'result') else results,
-                ohlc_df=ohlc_data
+                ohlc_df=ohlc_data,
             )
-            
+
             # Get trades data
             trades_df = model.trades_df
             if trades_df is None or trades_df.empty:
                 if self.plot_trades_placeholder is not None:
                     self.plot_trades_placeholder.setText("No trades data available")
                 return
-            
+
             # Remove the placeholder
             if self.plot_trades_placeholder is not None:
                 self.plot_trades_placeholder.setParent(None)
                 self.plot_trades_placeholder = None
-            
+
             # Create the plot trades widget
             plot_trades_widget = self._create_plot_trades_widget(model, ohlc_data)
-            
+
             # Add it to the plot trades tab layout
             plot_trades_layout = self.plot_trades_tab.layout()
             plot_trades_layout.addWidget(plot_trades_widget)
-            
+
             # Store reference
             self.plot_trades_widget = plot_trades_widget
 
         except Exception as e:
             # Fallback to simple text display
             if self.plot_trades_placeholder is not None:
-                self.plot_trades_placeholder.setText(f"Error displaying trades: {str(e)}")
+                self.plot_trades_placeholder.setText(
+                    f"Error displaying trades: {str(e)}"
+                )
                 self.plot_trades_placeholder.setStyleSheet("color: #ff4444;")
             else:
                 # Create a new placeholder if needed
-                self.plot_trades_placeholder = QLabel(f"Error displaying trades: {str(e)}")
+                from PySide6.QtWidgets import QLabel
+                self.plot_trades_placeholder = QLabel(
+                    f"Error displaying trades: {str(e)}"
+                )
                 self.plot_trades_placeholder.setAlignment(Qt.AlignCenter)
-                self.plot_trades_placeholder.setStyleSheet("color: #ff4444; font-size: 14px;")
+                self.plot_trades_placeholder.setStyleSheet(
+                    "color: #ff4444; font-size: 14px;"
+                )
                 self.plot_trades_tab.layout().addWidget(self.plot_trades_placeholder)
 
     def _create_plot_trades_widget(self, model, ohlc_data):
@@ -1033,12 +1043,12 @@ class ExecutionMonitorWidget(QWidget):
         from src.visualizer.models import IndicatorConfig
         from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
         from PySide6.QtCore import Qt
-        
+
         # Create a container widget
         container = QWidget()
         layout = QVBoxLayout(container)
         layout.setContentsMargins(5, 5, 5, 5)
-        
+
         # Get trades data
         trades_df = model.trades_df
         if trades_df is None or trades_df.empty:
@@ -1047,10 +1057,11 @@ class ExecutionMonitorWidget(QWidget):
             no_trades_label.setStyleSheet("color: #888; font-size: 14px;")
             layout.addWidget(no_trades_label)
             return container
-        
+
         # Create a button to open the trades chart in a separate window
         open_chart_btn = QPushButton("Open Trades Chart")
-        open_chart_btn.setStyleSheet("""
+        open_chart_btn.setStyleSheet(
+            """
             QPushButton {
                 background-color: #0066cc;
                 color: white;
@@ -1063,16 +1074,15 @@ class ExecutionMonitorWidget(QWidget):
             QPushButton:hover {
                 background-color: #0088ff;
             }
-        """)
-        
+        """
+        )
+
         # Auto-detect indicator columns from the ohlc_df
         indicators = []
         if ohlc_data is not None and not ohlc_data.empty:
             standard_cols = {"open", "high", "low", "close", "volume", "time"}
             indicator_cols = [
-                col
-                for col in ohlc_data.columns
-                if col.lower() not in standard_cols
+                col for col in ohlc_data.columns if col.lower() not in standard_cols
             ]
 
             # Define a cycle of colors for the indicators
@@ -1087,48 +1097,86 @@ class ExecutionMonitorWidget(QWidget):
                         color=plot_colors[i % len(plot_colors)],
                     )
                 )
-        
+
         def open_trades_chart():
             try:
-                from src.visualizer.windows.plot_trades import show_candlestick_with_trades
-                
+                import pandas as pd
+                from src.visualizer.windows.plot_trades import (
+                    show_candlestick_with_trades,
+                )
+
+                # Ensure OHLC data has proper datetime index
+                processed_ohlc_data = None
+                if ohlc_data is not None and not ohlc_data.empty:
+                    processed_ohlc_data = ohlc_data.copy()
+
+                    # Check if we have a datetime index
+                    if not isinstance(processed_ohlc_data.index, pd.DatetimeIndex):
+                        # Try to use datetime column if it exists
+                        if 'datetime' in processed_ohlc_data.columns:
+                            processed_ohlc_data = processed_ohlc_data.set_index(
+                                'datetime'
+                            )
+                        else:
+                            # Create a dummy datetime index if none exists
+                            processed_ohlc_data.index = pd.date_range(
+                                start='2021-01-01',
+                                periods=len(processed_ohlc_data),
+                                freq='1H',
+                            )
+
+                    # Ensure the index is properly formatted
+                    if isinstance(processed_ohlc_data.index, pd.DatetimeIndex):
+                        processed_ohlc_data.index = (
+                            processed_ohlc_data.index.tz_localize(None)
+                        )
+
                 window = show_candlestick_with_trades(
-                    ohlc_data=ohlc_data if ohlc_data is not None and not ohlc_data.empty else None,
+                    ohlc_data=processed_ohlc_data,
                     trades_df=trades_df,
                     indicators=indicators,
                     title="Trades Chart",
                     block=False,
                 )
                 return window
+
             except Exception as e:
                 print(f"Error opening trades chart: {e}")
+                import traceback
+
+                traceback.print_exc()
                 return None
-        
+
         # Connect the button
         open_chart_btn.clicked.connect(open_trades_chart)
-        
+
         # Add button to layout
         layout.addWidget(open_chart_btn)
-        
+
         # Add some info text
-        info_label = QLabel(f"Found {len(trades_df)} trades. Click the button above to open detailed trade visualization with candlestick charts and indicators.")
+        info_label = QLabel(
+            f"Found {len(trades_df)} trades. Click the button above to open detailed trade visualization with candlestick charts and indicators."
+        )
         info_label.setAlignment(Qt.AlignCenter)
         info_label.setStyleSheet("color: #ccc; font-size: 11px; padding: 10px;")
         info_label.setWordWrap(True)
         layout.addWidget(info_label)
-        
+
         # Add a simple trades summary table
         try:
             from PySide6.QtWidgets import QTableWidget, QTableWidgetItem, QHeaderView
-            
+
             # Create a simple trades summary table
             trades_table = QTableWidget()
             trades_table.setRowCount(min(10, len(trades_df)))  # Show max 10 trades
             trades_table.setColumnCount(6)
-            trades_table.setHorizontalHeaderLabels(["Type", "Entry Time", "Exit Time", "Entry Price", "Exit Price", "P&L"])
-            
+            trades_table.setHorizontalHeaderLabels(
+                ["Type", "Entry Time", "Exit Time", "Entry Price", "Exit Price", "P&L"]
+            )
+
             # Style the table
-            trades_table.setStyleSheet("""
+            trades_table.setStyleSheet(
+                """
                 QTableWidget {
                     background-color: #2b2b2b;
                     color: #fff;
@@ -1148,35 +1196,46 @@ class ExecutionMonitorWidget(QWidget):
                     font-weight: bold;
                     padding: 4px;
                 }
-            """)
-            
+            """
+            )
+
             # Fill the table with trade data
             for i, (idx, trade) in enumerate(trades_df.head(10).iterrows()):
-                trades_table.setItem(i, 0, QTableWidgetItem(str(trade.get('type', 'N/A'))))
-                trades_table.setItem(i, 1, QTableWidgetItem(str(trade.get('start', 'N/A'))))
-                trades_table.setItem(i, 2, QTableWidgetItem(str(trade.get('end', 'N/A'))))
-                trades_table.setItem(i, 3, QTableWidgetItem(f"{trade.get('buyprice', 0):.4f}"))
-                trades_table.setItem(i, 4, QTableWidgetItem(f"{trade.get('sellprice', 0):.4f}"))
-                
+                trades_table.setItem(
+                    i, 0, QTableWidgetItem(str(trade.get('type', 'N/A')))
+                )
+                trades_table.setItem(
+                    i, 1, QTableWidgetItem(str(trade.get('start', 'N/A')))
+                )
+                trades_table.setItem(
+                    i, 2, QTableWidgetItem(str(trade.get('end', 'N/A')))
+                )
+                trades_table.setItem(
+                    i, 3, QTableWidgetItem(f"{trade.get('buyprice', 0):.4f}")
+                )
+                trades_table.setItem(
+                    i, 4, QTableWidgetItem(f"{trade.get('sellprice', 0):.4f}")
+                )
+
                 # Calculate P&L
                 pnl = trade.get('profit', 0)
                 if pnl == 0:
                     pnl = trade.get('sellprice', 0) - trade.get('buyprice', 0)
-                
+
                 pnl_item = QTableWidgetItem(f"{pnl:.2f}")
                 if pnl > 0:
                     pnl_item.setStyleSheet("color: #00ff00;")
                 elif pnl < 0:
                     pnl_item.setStyleSheet("color: #ff0000;")
                 trades_table.setItem(i, 5, pnl_item)
-            
+
             # Adjust column widths
             trades_table.horizontalHeader().setStretchLastSection(True)
             trades_table.resizeColumnsToContents()
-            
+
             layout.addWidget(trades_table)
-            
+
         except Exception as e:
             print(f"Error creating trades table: {e}")
-        
+
         return container

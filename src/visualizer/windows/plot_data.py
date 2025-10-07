@@ -592,7 +592,23 @@ class PlotWindow(BaseWindow):
             df['time'] = list(range(len(df)))
 
         # Store the original timestamps and set up the custom axis
-        self._time_values = pd.to_datetime(time_data).reset_index(drop=True)
+        # Ensure time_data is properly converted to datetime
+        if isinstance(time_data.index, pd.DatetimeIndex):
+            # If the index is already datetime, use it directly
+            self._time_values = time_data.reset_index(drop=True)
+        else:
+            # Convert to datetime, handling various input formats
+            try:
+                self._time_values = pd.to_datetime(time_data).reset_index(drop=True)
+            except Exception as e:
+                print(f"Warning: Could not convert time_data to datetime: {e}")
+                # Fallback: create a dummy datetime range
+                self._time_values = pd.date_range(
+                    start='2021-01-01', 
+                    periods=len(df), 
+                    freq='1H'
+                )
+        
         date_axis = DateAxis(timestamps=self._time_values.values, orientation='bottom')
         self.price_plot.setAxisItems({'bottom': date_axis})
         return df
