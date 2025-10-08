@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import shutil
-import sys
 import textwrap
 from typing import Dict
-from collections import namedtuple
+
+from .files import get_parent_directory
+
 
 # Try modern rendering with `rich`; gracefully degrade if unavailable.
 try:
@@ -122,6 +123,11 @@ PrintMessage = {
     'WARNING': print_warning,
     'SUCCESS': print_success,
 }
+
+# Project root
+PROJECT_ROOT = get_parent_directory(any_subdir='src')
+
+__all__ = ['PrintMessage', 'PROJECT_ROOT']
 
 if __name__ == "__main__":
     PrintMessage['INFO']('This is an informational message.')

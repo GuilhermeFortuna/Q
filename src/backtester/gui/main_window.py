@@ -6,36 +6,30 @@ for all backtesting workflows including strategy building, data configuration,
 backtest setup, and execution monitoring.
 """
 
-import sys
 import os
-from typing import Optional, Dict, Any
+import sys
+
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow,
     QTabWidget,
     QWidget,
     QVBoxLayout,
-    QHBoxLayout,
-    QMenuBar,
-    QMenu,
-    QToolBar,
-    QStatusBar,
     QLabel,
     QProgressBar,
-    QSplitter,
     QMessageBox,
     QApplication,
 )
-from PySide6.QtCore import Qt, QTimer, QThread, Signal
-from PySide6.QtGui import QAction, QIcon, QKeySequence
 
-from .widgets.strategy_builder import StrategyBuilderWidget
-from .widgets.data_config import DataConfigWidget
-from .widgets.backtest_config import BacktestConfigWidget
-from .widgets.execution_monitor import ExecutionMonitorWidget
-from .models.strategy_model import StrategyModel
-from .models.backtest_model import BacktestModel
-from .controllers.strategy_controller import StrategyController
+from src.helper import PROJECT_ROOT
 from .controllers.execution_controller import ExecutionController
+from .controllers.strategy_controller import StrategyController
+from .models.backtest_model import BacktestModel
+from .models.strategy_model import StrategyModel
+from .widgets.backtest_config import BacktestConfigWidget
+from .widgets.data_config import DataConfigWidget
+from .widgets.execution_monitor import ExecutionMonitorWidget
+from .widgets.strategy_builder import StrategyBuilderWidget
 
 
 class BacktesterMainWindow(QMainWindow):
@@ -291,6 +285,7 @@ class BacktesterMainWindow(QMainWindow):
     def _apply_styling(self):
         """Apply JetBrains-inspired dark theme styling to the application."""
         from .theme import theme
+
         self.setStyleSheet(theme.get_main_window_stylesheet())
 
     def _update_status(self, message: str):
@@ -301,9 +296,10 @@ class BacktesterMainWindow(QMainWindow):
         """Update the window title to show current file."""
         base_title = "Backtester - Quantitative Trading Research Toolkit"
         file_path = self.strategy_model.get_strategy_file_path()
-        
+
         if file_path:
             import os
+
             filename = os.path.basename(file_path)
             self.setWindowTitle(f"{base_title} - {filename}")
         else:
@@ -387,9 +383,9 @@ class BacktesterMainWindow(QMainWindow):
                 "Unsaved Changes",
                 "You have an unsaved strategy. Do you want to save it before creating a new one?",
                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-                QMessageBox.Save
+                QMessageBox.Save,
             )
-            
+
             if reply == QMessageBox.Save:
                 self._save_strategy()
                 if not self.strategy_model.get_strategy_file_path():
@@ -403,6 +399,22 @@ class BacktesterMainWindow(QMainWindow):
         self._update_status("New strategy created")
         self._update_window_title()
 
+    def _get_create_strategies_directory(self) -> str:
+        # Set default directory for strategies
+        strategies_dir = os.path.join(
+            PROJECT_ROOT, "src", "backtester", "gui", "saved_strategies"
+        )
+        if not os.path.exists(strategies_dir):
+            try:
+                os.makedirs(strategies_dir, exist_ok=True)
+                self._update_status(
+                    f"Created default strategies directory: {strategies_dir}"
+                )
+            except:
+                strategies_dir = os.getcwd()  # Fallback to current directory
+
+        return strategies_dir
+
     def _open_strategy(self):
         """Open an existing strategy file."""
         # Check for unsaved changes
@@ -412,9 +424,9 @@ class BacktesterMainWindow(QMainWindow):
                 "Unsaved Changes",
                 "You have an unsaved strategy. Do you want to save it before opening a new one?",
                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-                QMessageBox.Save
+                QMessageBox.Save,
             )
-            
+
             if reply == QMessageBox.Save:
                 self._save_strategy()
                 if not self.strategy_model.get_strategy_file_path():
@@ -425,17 +437,15 @@ class BacktesterMainWindow(QMainWindow):
 
         # Get file path from dialog
         from PySide6.QtWidgets import QFileDialog
-        
+
+        strategies_dir = self._get_create_strategies_directory()
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open Strategy",
-            "",
-            "JSON Files (*.json);;All Files (*)"
+            self, "Open Strategy", strategies_dir, "JSON Files (*.json);;All Files (*)"
         )
-        
+
         if not file_path:
             return  # User cancelled
-        
+
         # Load the strategy
         if self.strategy_model.import_strategy(file_path):
             # Update window title
@@ -445,7 +455,9 @@ class BacktesterMainWindow(QMainWindow):
             self.tab_widget.setCurrentIndex(0)
         else:
             QMessageBox.critical(
-                self, "Load Error", f"Failed to load strategy from:\n{file_path}\n\nPlease check the file format and try again."
+                self,
+                "Load Error",
+                f"Failed to load strategy from:\n{file_path}\n\nPlease check the file format and try again.",
             )
 
     def _save_strategy(self):
@@ -456,40 +468,32 @@ class BacktesterMainWindow(QMainWindow):
             )
             return
 
-        # Set up fixed strategies directory
-        strategies_dir = os.path.join(os.getcwd(), "strategies")
-        os.makedirs(strategies_dir, exist_ok=True)
-        
-        # Generate default filename from strategy name
-        strategy_config = self.strategy_model.get_strategy_config()
-        if strategy_config and strategy_config.name:
-            # Clean filename (remove invalid characters)
-            import re
-            clean_name = re.sub(r'[<>:"/\\|?*]', '_', strategy_config.name)
-            default_filename = f"{clean_name}.json"
-        else:
-            default_filename = "New Strategy.json"
-        
-        # Set default path
-        default_path = os.path.join(strategies_dir, default_filename)
-        
         # Get file path from dialog
         from PySide6.QtWidgets import QFileDialog
-        
+        import os
+        import re
+
+        # Set default directory for strategies
+        strategies_dir = self._get_create_strategies_directory()
+
+        # Get current strategy name for default filename
+        strategy_config = self.strategy_model.get_strategy_config()
+        default_name = strategy_config.name if strategy_config else "New Strategy"
+        # Clean filename (remove invalid characters)
+        clean_name = re.sub(r'[<>:"/\\|?*]', '_', default_name)
+        default_path = os.path.join(strategies_dir, f"{clean_name}.json")
+
         file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Save Strategy",
-            default_path,
-            "JSON Files (*.json);;All Files (*)"
+            self, "Save Strategy", default_path, "JSON Files (*.json);;All Files (*)"
         )
-        
+
         if not file_path:
             return  # User cancelled
-        
+
         # Ensure .json extension
         if not file_path.endswith('.json'):
             file_path += '.json'
-        
+
         # Save the strategy
         if self.strategy_model.export_strategy(file_path):
             # Update window title
@@ -608,9 +612,9 @@ class BacktesterMainWindow(QMainWindow):
                 "Unsaved Changes",
                 "You have an unsaved strategy. Do you want to save it before exiting?",
                 QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel,
-                QMessageBox.Save
+                QMessageBox.Save,
             )
-            
+
             if reply == QMessageBox.Save:
                 self._save_strategy()
                 if not self.strategy_model.get_strategy_file_path():
