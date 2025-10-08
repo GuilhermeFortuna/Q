@@ -3,7 +3,8 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from src.backtester import CandleData, TickData, BacktestParameters, Engine
+from src.data import CandleData, TickData
+from src.backtester import BacktestParameters, Engine
 from src.strategies import HybridCandleTickStrategy, HybridExecutionConfig
 from src.strategies.signals.base import TradingSignal, SignalDecision
 
