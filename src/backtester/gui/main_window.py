@@ -36,15 +36,65 @@ class BacktesterMainWindow(QMainWindow):
     """
     Main application window for the Backtester GUI.
 
-    Provides a comprehensive interface for:
-    - Strategy building and composition
-    - Market data loading and validation
-    - Backtest parameter configuration
-    - Real-time execution monitoring
-    - Results visualization and analysis
+    This is the central component of the Backtester GUI application, providing
+    a comprehensive tabbed interface for all backtesting workflows. The window
+    follows a Model-View-Controller (MVC) architecture with Qt's signal/slot
+    mechanism for loose coupling between components.
+
+    The main window consists of four primary tabs:
+    - Strategy Builder: Visual composition of trading strategies
+    - Data Configuration: Loading and validation of market data
+    - Backtest Configuration: Parameter setup for backtest execution
+    - Execution & Monitoring: Real-time backtest execution and results
+
+    Attributes:
+        strategy_model (StrategyModel): Manages strategy configuration and state
+        backtest_model (BacktestModel): Handles data sources and backtest config
+        strategy_controller (StrategyController): Business logic for strategy operations
+        execution_controller (ExecutionController): Manages backtest execution
+        tab_widget (QTabWidget): Main tabbed interface container
+        strategy_builder (StrategyBuilderWidget): Strategy composition interface
+        data_config (DataConfigWidget): Data loading and configuration interface
+        backtest_config (BacktestConfigWidget): Parameter configuration interface
+        execution_monitor (ExecutionMonitorWidget): Real-time execution monitoring
+
+    Signals:
+        tab_changed(int): Emitted when active tab changes
+        application_closing(): Emitted before application closes
+
+    Example:
+        ```python
+        from PySide6.QtWidgets import QApplication
+        from src.backtester.gui.main_window import BacktesterMainWindow
+        import sys
+
+        app = QApplication(sys.argv)
+        window = BacktesterMainWindow()
+        window.show()
+        sys.exit(app.exec())
+        ```
     """
 
     def __init__(self, parent=None):
+        """
+        Initialize the BacktesterMainWindow.
+
+        Sets up the main application window with all necessary components including
+        models, controllers, UI widgets, and signal connections. The window is
+        configured with a professional dark theme and proper sizing constraints.
+
+        Args:
+            parent (Optional[QWidget]): Parent widget for this window. Defaults to None.
+
+        Note:
+            The initialization process follows this sequence:
+            1. Set window properties (title, size)
+            2. Initialize models and controllers
+            3. Setup UI components and layout
+            4. Connect signals between components
+            5. Apply styling and theme
+            6. Set initial status
+        """
         super().__init__(parent)
         self.setWindowTitle("Backtester - Quantitative Trading Research Toolkit")
         self.setMinimumSize(1200, 800)
@@ -64,7 +114,20 @@ class BacktesterMainWindow(QMainWindow):
         self._update_status("Ready")
 
     def _setup_ui(self):
-        """Initialize the main user interface components."""
+        """
+        Initialize the main user interface components.
+
+        Creates the central widget with tabbed interface, menu bar, toolbar,
+        and status bar. This method sets up the basic structure of the main
+        window before individual tabs are created.
+
+        The UI structure:
+        - Central widget with vertical layout
+        - Tab widget containing all main interfaces
+        - Menu bar with File, Edit, View, and Help menus
+        - Toolbar with quick access buttons
+        - Status bar with progress indicator and connection status
+        """
         # Create central widget with tabbed interface
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -86,7 +149,18 @@ class BacktesterMainWindow(QMainWindow):
         self._create_status_bar()
 
     def _create_tabs(self):
-        """Create the main tab widgets."""
+        """
+        Create the main tab widgets.
+
+        Initializes all four primary tabs of the application:
+        1. Strategy Builder - Visual strategy composition interface
+        2. Data Configuration - Market data loading and validation
+        3. Backtest Configuration - Parameter setup and configuration
+        4. Execution & Monitoring - Real-time backtest execution and results
+
+        Each tab widget is connected to its respective model and controller
+        to maintain proper MVC separation and data flow.
+        """
         # Strategy Builder Tab
         self.strategy_builder = StrategyBuilderWidget(
             self.strategy_model, self.strategy_controller
@@ -515,7 +589,26 @@ class BacktesterMainWindow(QMainWindow):
         )
 
     def _run_backtest(self):
-        """Run the backtest with current configuration."""
+        """
+        Run the backtest with current configuration.
+
+        Validates that all required components are available (strategy, data,
+        configuration) and starts the backtest execution. The execution runs
+        in a separate thread to prevent UI blocking.
+
+        The method performs the following validations:
+        - Strategy must be created and valid
+        - Market data must be loaded and validated
+        - Backtest parameters must be configured
+
+        Raises:
+            QMessageBox: Warning dialogs for missing components
+            Exception: Any errors during backtest initialization
+
+        Note:
+            The actual backtest execution is handled by the ExecutionController
+            in a separate thread to maintain UI responsiveness.
+        """
         try:
             # Get strategy from model
             strategy = self.strategy_model.get_strategy()

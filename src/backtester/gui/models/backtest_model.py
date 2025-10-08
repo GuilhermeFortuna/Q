@@ -62,11 +62,65 @@ class BacktestModel(QObject):
     """
     Data model for managing backtest configuration and data sources.
 
-    This model handles:
-    - Data source configuration and management
-    - Backtest parameter configuration
-    - Integration with the backtester engine
-    - Data validation and preparation
+    This model serves as the central data management component for backtest
+    configuration in the Backtester GUI. It maintains the state of data sources,
+    backtest parameters, and loaded market data, providing a clean interface
+    for the data configuration UI and execution controllers.
+
+    The model follows the MVC pattern by acting as the data layer, providing
+    a clean interface for the data configuration UI and controllers to interact
+    with backtest data. It ensures data consistency and provides change
+    notifications through Qt signals.
+
+    Key Responsibilities:
+    - Data Source Management: Manages multiple data source configurations
+    - Backtest Configuration: Maintains backtest parameters and settings
+    - Data Loading: Handles loading and validation of market data
+    - Data Storage: Caches loaded data for efficient access
+    - Validation: Validates data sources and configuration parameters
+    - Integration: Provides data and configuration for backtest execution
+
+    Data Structures:
+    - DataSourceConfig: Configuration for individual data sources
+    - BacktestConfig: Complete backtest parameter configuration
+    - Loaded Data: Cached market data from various sources
+
+    Supported Data Sources:
+    - CSV Files: Standard OHLCV format with datetime index
+    - Parquet Files: Optimized columnar storage for large datasets
+    - MetaTrader 5: Direct connection to MT5 terminal
+    - Database: Custom database connections (extensible)
+
+    Attributes:
+        _data_sources (Dict[str, DataSourceConfig]): Data source configurations
+        _backtest_config (BacktestConfig): Current backtest configuration
+        _validation_errors (List[str]): Current validation error messages
+        _loaded_data (Dict[str, Any]): Cached loaded data by source ID
+
+    Signals:
+        data_sources_changed(): Emitted when data sources are modified
+        backtest_config_changed(): Emitted when backtest configuration changes
+        validation_changed(bool): Emitted when validation status changes (is_valid)
+        data_loaded(): Emitted when data loading completes
+        data_loading_error(str): Emitted when data loading fails (error_message)
+        data_loading_progress(int): Emitted with loading progress (percentage)
+        config_changed(): Emitted when any configuration changes
+
+    Example:
+        ```python
+        from src.backtester.gui.models.backtest_model import BacktestModel, DataSourceConfig
+
+        model = BacktestModel()
+        model.data_loaded.connect(self.on_data_loaded)
+        
+        config = DataSourceConfig(
+            source_type="CSV",
+            symbol="EURUSD",
+            timeframe="1H",
+            file_path="data.csv"
+        )
+        model.add_data_source("EURUSD_1H", config)
+        ```
     """
 
     # Signals

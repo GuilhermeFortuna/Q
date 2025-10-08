@@ -36,7 +36,33 @@ from .signal_library import SignalLibraryWidget
 
 
 class SignalTableWidget(QTableWidget):
-    """Custom table widget for displaying strategy signals."""
+    """
+    Custom table widget for displaying and managing strategy signals.
+
+    This widget provides a comprehensive interface for viewing, editing, and
+    managing all signals within a trading strategy. It displays signals in a
+    tabular format with columns for enabled status, signal name, role, parameters,
+    and action buttons.
+
+    The table supports:
+    - Real-time editing of signal parameters
+    - Enable/disable toggling for individual signals
+    - Signal role management (entry, exit, filter)
+    - Inline parameter editing with validation
+    - Context menus for advanced operations
+
+    Attributes:
+        signal_edited (Signal): Emitted when a signal is edited (signal_id)
+        signal_removed (Signal): Emitted when a signal is removed (signal_id)
+        signal_toggled (Signal): Emitted when signal enabled state changes (signal_id, enabled)
+
+    Example:
+        ```python
+        table = SignalTableWidget()
+        table.signal_edited.connect(self.on_signal_edited)
+        table.add_signal_row(signal_config)
+        ```
+    """
 
     signal_edited = Signal(str)  # signal_id
     signal_removed = Signal(str)  # signal_id
@@ -351,11 +377,47 @@ class StrategyBuilderWidget(QWidget):
     """
     Main widget for building and configuring trading strategies.
 
-    This widget provides:
-    - Signal library for selecting signals
-    - Strategy canvas for managing configured signals
-    - Parameter editing and validation
-    - Real-time strategy compilation
+    This is the central component for strategy composition in the Backtester GUI.
+    It provides a comprehensive interface for creating, editing, and validating
+    trading strategies through a visual drag-and-drop approach.
+
+    The widget consists of three main sections:
+    1. Signal Library (left panel): Browse and select available trading signals
+    2. Strategy Canvas (center): Visual composition area for arranging signals
+    3. Parameter Panel (right): Edit signal parameters and configuration
+
+    Key Features:
+    - Drag-and-drop signal composition
+    - Real-time parameter validation
+    - Visual signal role management (entry, exit, filter)
+    - Strategy validation and compilation
+    - Signal library with search and filtering
+    - Context menus for advanced operations
+
+    Attributes:
+        strategy_model (StrategyModel): Manages strategy data and state
+        strategy_controller (StrategyController): Handles strategy business logic
+        signal_library (SignalLibraryWidget): Panel for signal selection
+        signal_table (SignalTableWidget): Table for signal management
+        validation_text (QTextEdit): Displays validation messages
+
+    Signals:
+        strategy_changed(): Emitted when strategy configuration changes
+        signal_added(str): Emitted when signal is added (signal_id)
+        signal_removed(str): Emitted when signal is removed (signal_id)
+        validation_result(bool, str): Emitted with validation results (is_valid, message)
+
+    Example:
+        ```python
+        from src.backtester.gui.widgets.strategy_builder import StrategyBuilderWidget
+        from src.backtester.gui.models.strategy_model import StrategyModel
+        from src.backtester.gui.controllers.strategy_controller import StrategyController
+
+        model = StrategyModel()
+        controller = StrategyController(model)
+        builder = StrategyBuilderWidget(model, controller)
+        builder.strategy_changed.connect(self.on_strategy_changed)
+        ```
     """
 
     # Signals
