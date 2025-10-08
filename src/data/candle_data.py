@@ -11,14 +11,21 @@ from .base import MarketData
 
 
 class CandleData(MarketData):
-    def __init__(self, symbol: str, timeframe: str):
-        super().__init__(symbol=symbol)
+    def __init__(
+        self,
+        symbol: str,
+        timeframe: str,
+        data: Optional[pd.DataFrame] = None,
+    ):
+        # Initialize MarketData with optional data for consistency
+        super().__init__(symbol=symbol, data=data)
         # Validate timeframe
         if not isinstance(timeframe, str) or timeframe not in TIMEFRAMES.keys():
             raise ValueError(f'Invalid timeframe: {timeframe}')
 
         self.timeframe = timeframe
-        self.df = pd.DataFrame()
+        # Prefer using .df across the project; if provided, set it, else empty DataFrame
+        self.df = data if isinstance(data, pd.DataFrame) else pd.DataFrame()
 
     def store_data(
         self,
@@ -163,7 +170,7 @@ class CandleData(MarketData):
             self.timeframe = timeframe
         else:
             timeframe = self.timeframe
-            
+
         df = pd.DataFrame()
         try:
             # Check if symbol exists
@@ -172,19 +179,19 @@ class CandleData(MarketData):
                 error_msg = f"Symbol {mt5_symbol} not found in MT5. Available symbols: {mt5.symbols_get()[:5] if mt5.symbols_get() else 'None'}"
                 print(error_msg)
                 raise ValueError(error_msg)
-            
+
             # Get rates from MT5
             rates = mt5.copy_rates_range(
                 mt5_symbol, TIMEFRAMES[timeframe].mt5, date_from, date_to
             )
-            
+
             if rates is None or len(rates) == 0:
                 error_msg = f"No data returned from MT5 for symbol {mt5_symbol}, timeframe {timeframe}, from {date_from} to {date_to}. MT5 error: {mt5.last_error()}"
                 print(error_msg)
                 raise ValueError(error_msg)
-                
+
             df = CandleData.format_candle_data_from_mt5(data=rates)
-            
+
         except Exception as e:
             error_msg = f'Error importing data for symbol {mt5_symbol} from MT5: {str(e)}. MT5 error: {mt5.last_error()}'
             print(error_msg)

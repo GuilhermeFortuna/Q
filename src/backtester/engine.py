@@ -298,6 +298,23 @@ class Engine:
             last_idx = 0
             for i in index[1:]:
                 last_idx = i
+
+                # Enforce daytrade EOD close on date change
+                if (
+                    not self.parameters.permit_swingtrade
+                    and self.trades.open_trade_info is not None
+                ):
+                    prev_dt = candle.datetime_index[i - 1]
+                    curr_dt = candle.datetime_index[i]
+                    if prev_dt.date() != curr_dt.date():
+                        self.trades._close_position(
+                            price=float(candle.close[i - 1]),
+                            datetime_val=prev_dt,
+                            comment='End of day close',
+                        )
+                        # After forced close, do not run exit strategy on this step
+                        # but allow normal processing to continue (possible new entries next)
+
                 if self.trades.open_trade_info is None:
                     order = self.strategy.entry_strategy(i, self.data)
                     if isinstance(order, TradeOrder):
@@ -364,6 +381,26 @@ class Engine:
         last_idx = 0
         for i in range(1, n):
             last_idx = i
+
+            # Enforce daytrade EOD close on date change
+            if (
+                not self.parameters.permit_swingtrade
+                and self.trades.open_trade_info is not None
+            ):
+                prev_dt = dt_arr[i - 1]
+                curr_dt = dt_arr[i]
+                if prev_dt.date() != curr_dt.date():
+                    # Use mid if bid/ask available, else chosen price_attr
+                    if hasattr(tick, 'bid') and hasattr(tick, 'ask'):
+                        forced_price = 0.5 * (tick.bid[i - 1] + tick.ask[i - 1])
+                    else:
+                        forced_price = price_arr[i - 1]
+                    self.trades._close_position(
+                        price=float(forced_price),
+                        datetime_val=prev_dt,
+                        comment='End of day close',
+                    )
+
             if self.trades.open_trade_info is None:
                 order = self.strategy.entry_strategy(i, self.data)
                 if isinstance(order, TradeOrder):

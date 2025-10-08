@@ -4,6 +4,9 @@ Tests for the backtester data module.
 
 from src.data.data import *
 
+# Added import for pandas used in tests
+import pandas as pd
+
 
 class TestDataHandling:
     """Test data loading and processing functions."""

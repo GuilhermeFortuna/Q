@@ -13,9 +13,10 @@ from .base import MarketData
 class TickData(MarketData):
     DEFAULT_BATCH_IMPORT_STEP_DAYS = 15
 
-    def __init__(self, symbol: str):
-        super().__init__(symbol=symbol)
-        self.df = pd.DataFrame()
+    def __init__(self, symbol: str, data: Optional[pd.DataFrame] = None):
+        super().__init__(symbol=symbol, data=data)
+        # Store DataFrame in .df to be consistent with CandleData and Engine expectations
+        self.df = data if isinstance(data, pd.DataFrame) else pd.DataFrame()
 
     def store_data(
         self,
