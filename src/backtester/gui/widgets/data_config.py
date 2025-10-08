@@ -40,7 +40,43 @@ from src.data import CandleData, TickData
 
 
 class DataSourceWidget(QWidget):
-    """Widget for configuring a single data source."""
+    """
+    Widget for configuring a single data source.
+
+    This widget provides a comprehensive interface for configuring individual
+    data sources including file paths, connection parameters, date ranges,
+    and data validation settings. It supports multiple data source types
+    including CSV files, Parquet files, MetaTrader 5, and database connections.
+
+    The widget displays:
+    - Data source identification and type selection
+    - Configuration parameters specific to the source type
+    - Date range selection for historical data
+    - Data validation and quality indicators
+    - Load/remove actions for the data source
+
+    Attributes:
+        source_id (str): Unique identifier for this data source
+        config (DataSourceConfig): Configuration object for this source
+        source_updated (Signal): Emitted when source configuration changes (source_id)
+        load_requested (Signal): Emitted when user requests data loading (source_id)
+        source_removed (Signal): Emitted when source is removed (source_id)
+
+    Example:
+        ```python
+        from src.backtester.gui.widgets.data_config import DataSourceWidget
+        from src.backtester.gui.models.backtest_model import DataSourceConfig
+
+        config = DataSourceConfig(
+            source_id="EURUSD_1H",
+            source_type="CSV",
+            symbol="EURUSD",
+            timeframe="1H"
+        )
+        widget = DataSourceWidget("EURUSD_1H", config)
+        widget.load_requested.connect(self.on_load_data)
+        ```
+    """
 
     source_updated = Signal(str)  # source_id
     load_requested = Signal(str)  # source_id - emitted when user clicks Load Data
@@ -337,11 +373,55 @@ class DataConfigWidget(QWidget):
     """
     Main widget for data configuration and loading.
 
-    This widget provides:
-    - Data source configuration
-    - Market data loading from various sources
-    - Data validation and preview
-    - Quality indicators and statistics
+    This is the central component for managing market data in the Backtester GUI.
+    It provides a comprehensive interface for loading, validating, and configuring
+    market data from various sources including CSV files, Parquet files, and
+    MetaTrader 5 connections.
+
+    The widget consists of several key sections:
+    1. Data Source Management: Add, configure, and remove data sources
+    2. Data Loading Interface: Load data from configured sources
+    3. Data Validation: Real-time validation and quality checking
+    4. Data Preview: Tabular and statistical preview of loaded data
+    5. Data Statistics: Comprehensive data quality metrics
+
+    Supported Data Sources:
+    - CSV Files: Standard OHLCV format with datetime index
+    - Parquet Files: Optimized columnar storage for large datasets
+    - MetaTrader 5: Direct connection to MT5 terminal
+    - Database: Custom database connections (extensible)
+
+    Key Features:
+    - Multi-source data management
+    - Real-time data validation
+    - Data quality indicators and statistics
+    - Preview functionality with data tables
+    - Automatic data format detection
+    - Error handling and user feedback
+
+    Attributes:
+        backtest_model (BacktestModel): Manages data sources and loaded data
+        data_sources (Dict[str, DataSourceWidget]): Dictionary of data source widgets
+        data_table (QTableWidget): Table for data preview
+        statistics_text (QTextEdit): Displays data statistics
+        validation_text (QTextEdit): Shows validation messages
+
+    Signals:
+        data_loaded(str, bool): Emitted when data loading completes (source_id, success)
+        data_validated(str, bool, str): Emitted with validation results (source_id, is_valid, message)
+        data_source_added(str): Emitted when data source is added (source_id)
+        data_source_removed(str): Emitted when data source is removed (source_id)
+
+    Example:
+        ```python
+        from src.backtester.gui.widgets.data_config import DataConfigWidget
+        from src.backtester.gui.models.backtest_model import BacktestModel
+
+        model = BacktestModel()
+        widget = DataConfigWidget(model)
+        widget.data_loaded.connect(self.on_data_loaded)
+        widget.add_data_source("CSV", {"path": "data.csv", "symbol": "EURUSD"})
+        ```
     """
 
     def __init__(self, backtest_model: BacktestModel, parent=None):

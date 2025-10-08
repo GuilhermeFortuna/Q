@@ -2,6 +2,12 @@
 
 A comprehensive graphical user interface for the Backtester package, providing an intuitive way to build, configure, and execute trading strategies.
 
+## 📚 Documentation
+
+- **[User Guide](docs/backtester_gui/USER_GUIDE.md)** - Complete user manual with tutorials and examples
+- **[Developer Guide](docs/backtester_gui/DEVELOPER_GUIDE.md)** - Architecture details and extension guide
+- **[API Reference](docs/backtester_gui/API_REFERENCE.md)** - Quick reference for classes and methods
+
 ## Features
 
 ### 🎯 Strategy Builder
@@ -58,6 +64,12 @@ src/backtester/gui/
 
 ### Quick Start
 
+### Method 1: Using the Example Script
+```bash
+python examples/backtester_gui_example.py
+```
+
+### Method 2: Direct Python Import
 ```python
 from src.backtester.gui.main_window import BacktesterMainWindow
 from PySide6.QtWidgets import QApplication
@@ -69,11 +81,14 @@ window.show()
 sys.exit(app.exec())
 ```
 
-### Running the Example
+### 5-Minute Tutorial
+1. **Load Data**: Switch to Data Configuration tab → Add CSV/Parquet file
+2. **Build Strategy**: Go to Strategy Builder → Drag RSI signal to canvas
+3. **Configure**: Set parameters (period=14) and role (Entry)
+4. **Set Parameters**: Switch to Backtest Configuration → Set trading costs
+5. **Run Backtest**: Go to Execution & Monitoring → Click "Run Backtest"
 
-```bash
-python examples/backtester_gui_example.py
-```
+For detailed tutorials, see the [User Guide](docs/backtester_gui/USER_GUIDE.md).
 
 ## Workflow
 
@@ -179,6 +194,53 @@ Planned features for future releases:
 - **pandas**: Data manipulation and analysis
 - **numpy**: Numerical computing
 - **MetaTrader5**: MT5 integration (optional)
+
+## Troubleshooting
+
+### Common Issues
+
+#### GUI Won't Start
+- **Check PySide6**: `pip install PySide6`
+- **Verify Python**: Requires Python 3.8+
+- **Check Dependencies**: Ensure all packages are installed
+
+#### Data Loading Errors
+- **File Format**: Ensure CSV has correct column names (datetime, open, high, low, close, volume)
+- **Date Format**: Use supported formats (%d/%m/%Y %H:%M or ISO)
+- **File Encoding**: Try UTF-8 or Latin-1 encoding
+- **Data Validation**: Check for missing or invalid values
+
+#### Strategy Validation Errors
+- **Signal Parameters**: Ensure all required parameters are set
+- **Signal Roles**: Each strategy needs at least one entry signal
+- **Parameter Ranges**: Check that parameter values are within valid ranges
+- **Strategy Logic**: Avoid circular dependencies between signals
+
+#### Backtest Execution Errors
+- **Data Availability**: Ensure data covers the specified period
+- **Strategy Logic**: Test with simple data first
+- **Memory Usage**: Large datasets may require more RAM
+- **Execution Logs**: Check detailed error messages in the log
+
+### Performance Issues
+
+#### Slow Data Loading
+- **Use Parquet**: Faster than CSV for large datasets
+- **Reduce Date Range**: Load only necessary data
+- **Check Disk Speed**: Use SSD for better performance
+
+#### Slow Backtest Execution
+- **Reduce Data Frequency**: Use higher timeframes when possible
+- **Simplify Strategy**: Remove unnecessary calculations
+- **Check Indicators**: Some indicators are computationally expensive
+
+### Getting Help
+
+1. **Check Logs**: Review execution logs for error details
+2. **Validate Configuration**: Ensure all settings are correct
+3. **Test with Simple Data**: Use basic examples first
+4. **Check Documentation**: Refer to [User Guide](docs/backtester_gui/USER_GUIDE.md) and [API Reference](docs/backtester_gui/API_REFERENCE.md)
+5. **Report Issues**: Include error messages and configuration details
 
 ## Contributing
 

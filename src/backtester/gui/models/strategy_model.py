@@ -80,11 +80,51 @@ class StrategyModel(QObject):
     """
     Data model for managing trading strategies in the GUI.
 
-    This model handles:
-    - Signal composition and configuration
-    - Parameter validation and management
-    - Strategy serialization and deserialization
-    - Integration with the backtester engine
+    This model serves as the central data management component for strategy
+    building in the Backtester GUI. It maintains the state of the current
+    strategy configuration, manages signal composition, and provides validation
+    and serialization capabilities.
+
+    The model follows the MVC pattern by acting as the data layer, providing
+    a clean interface for the strategy builder UI and controllers to interact
+    with strategy data. It ensures data consistency and provides change
+    notifications through Qt signals.
+
+    Key Responsibilities:
+    - Strategy State Management: Maintains current strategy configuration
+    - Signal Management: Handles signal addition, removal, and updates
+    - Parameter Validation: Validates signal parameters and strategy logic
+    - Serialization: Imports/exports strategy configurations to/from files
+    - Signal Discovery: Automatically discovers available signal classes
+    - Integration: Provides compiled strategies for backtesting
+
+    Data Structures:
+    - StrategyConfig: Complete strategy configuration with signals and metadata
+    - SignalConfig: Individual signal configuration with parameters and role
+    - SignalParameter: Parameter definition with validation constraints
+
+    Attributes:
+        _current_strategy (Optional[StrategyConfig]): Current strategy configuration
+        _signal_library (Dict[str, type]): Available signal classes by name
+        _validation_errors (List[str]): Current validation error messages
+        _strategy_file_path (Optional[str]): Path to current strategy file
+
+    Signals:
+        strategy_changed(): Emitted when strategy configuration changes
+        signal_added(str): Emitted when signal is added (signal_id)
+        signal_removed(str): Emitted when signal is removed (signal_id)
+        signal_updated(str): Emitted when signal is updated (signal_id)
+        validation_changed(bool): Emitted when validation status changes (is_valid)
+
+    Example:
+        ```python
+        from src.backtester.gui.models.strategy_model import StrategyModel, SignalRole
+
+        model = StrategyModel()
+        model.strategy_changed.connect(self.on_strategy_changed)
+        model.add_signal("RSI", SignalRole.ENTRY, {"period": 14})
+        strategy = model.get_strategy()
+        ```
     """
 
     # Signals

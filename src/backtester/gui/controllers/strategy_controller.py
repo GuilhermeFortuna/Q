@@ -78,12 +78,51 @@ class StrategyCompilationThread(QThread):
 class StrategyController(QObject):
     """
     Controller for managing strategy building and compilation.
-    
-    This controller handles:
-    - Strategy validation and compilation
-    - Signal parameter management
-    - Integration with the backtester engine
-    - Error handling and user feedback
+
+    This controller is responsible for orchestrating strategy building operations
+    in the Backtester GUI. It manages the strategy lifecycle from composition
+    through compilation, handling validation, signal management, and integration
+    with the backtesting engine.
+
+    The controller follows the MVC pattern by acting as the intermediary between
+    the strategy builder UI (view) and the strategy model (model). It ensures
+    that strategy compilation runs in separate threads to maintain UI responsiveness
+    while providing real-time validation and feedback.
+
+    Key Responsibilities:
+    - Strategy Validation: Validates strategy configuration and signal parameters
+    - Signal Management: Handles signal addition, removal, and parameter updates
+    - Strategy Compilation: Converts strategy configuration to executable TradingStrategy
+    - Error Handling: Manages validation errors and compilation failures
+    - State Management: Tracks strategy state and validation status
+    - Integration: Connects with the strategy model and backtesting engine
+
+    Threading Model:
+    - Main Thread: UI updates and user interactions
+    - Compilation Thread: Strategy compilation (StrategyCompilationThread)
+    - Signal/Slot: Communication between threads using Qt signals
+
+    Attributes:
+        strategy_model (StrategyModel): Manages strategy configuration and state
+        compilation_thread (Optional[StrategyCompilationThread]): Current compilation thread
+        is_compiling (bool): Whether strategy compilation is in progress
+        last_compiled_strategy (Optional[TradingStrategy]): Last successfully compiled strategy
+
+    Signals:
+        strategy_compiled(object): Emitted when strategy compilation completes (TradingStrategy)
+        compilation_error(str): Emitted when compilation fails (error_message)
+        validation_changed(bool): Emitted when validation status changes (is_valid)
+
+    Example:
+        ```python
+        from src.backtester.gui.controllers.strategy_controller import StrategyController
+        from src.backtester.gui.models.strategy_model import StrategyModel
+
+        model = StrategyModel()
+        controller = StrategyController(model)
+        controller.strategy_compiled.connect(self.on_strategy_compiled)
+        controller.add_signal("RSI", SignalRole.ENTRY, {"period": 14})
+        ```
     """
     
     # Signals

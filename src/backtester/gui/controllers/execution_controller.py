@@ -93,11 +93,52 @@ class ExecutionController(QObject):
     """
     Controller for managing backtest execution and monitoring.
 
-    This controller handles:
-    - Backtest execution in separate threads
-    - Progress monitoring and status updates
-    - Error handling and recovery
-    - Results management and visualization
+    This controller is responsible for orchestrating backtest execution in the
+    Backtester GUI. It manages the execution lifecycle from initialization
+    through completion, handling threading, progress monitoring, error management,
+    and results processing.
+
+    The controller follows the MVC pattern by acting as the intermediary between
+    the UI components (views) and the backtesting engine (model). It ensures
+    that backtest execution runs in separate threads to maintain UI responsiveness
+    while providing real-time feedback to the user.
+
+    Key Responsibilities:
+    - Thread Management: Executes backtests in separate QThread instances
+    - Progress Monitoring: Tracks and reports execution progress
+    - Error Handling: Manages exceptions and provides user feedback
+    - Results Processing: Handles backtest results and visualization
+    - State Management: Tracks execution state and prevents conflicts
+    - Integration: Connects with the backtesting engine and data models
+
+    Threading Model:
+    - Main Thread: UI updates and user interactions
+    - Execution Thread: Backtest execution (BacktestExecutionThread)
+    - Signal/Slot: Communication between threads using Qt signals
+
+    Attributes:
+        backtest_model (BacktestModel): Manages backtest configuration and data
+        execution_thread (Optional[BacktestExecutionThread]): Current execution thread
+        is_running (bool): Whether a backtest is currently executing
+        current_results (Optional[TradeRegistry]): Results from last execution
+
+    Signals:
+        backtest_started(): Emitted when backtest execution begins
+        backtest_finished(object): Emitted when backtest completes (TradeRegistry results)
+        backtest_error(str): Emitted when backtest encounters an error (error_message)
+        progress_updated(int): Emitted with progress updates (percentage)
+        status_updated(str): Emitted with status message updates (message)
+
+    Example:
+        ```python
+        from src.backtester.gui.controllers.execution_controller import ExecutionController
+        from src.backtester.gui.models.backtest_model import BacktestModel
+
+        model = BacktestModel()
+        controller = ExecutionController(model)
+        controller.backtest_finished.connect(self.on_backtest_completed)
+        controller.run_backtest(strategy, data, config)
+        ```
     """
 
     # Signals

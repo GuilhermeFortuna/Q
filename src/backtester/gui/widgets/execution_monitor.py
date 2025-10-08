@@ -34,7 +34,31 @@ from ..controllers.execution_controller import ExecutionController
 
 
 class MetricsCardWidget(QFrame):
-    """Widget for displaying a single metric card."""
+    """
+    Widget for displaying a single metric card.
+
+    This widget provides a clean, card-based interface for displaying
+    individual performance metrics during backtest execution. Each card
+    shows a metric title and its current value with professional styling.
+
+    The card is designed to be compact and visually appealing, with:
+    - Clear title display at the top
+    - Prominent value display in the center
+    - Consistent styling with the application theme
+    - Fixed size for uniform grid layout
+
+    Attributes:
+        title (str): The metric title displayed at the top
+        value (str): The current metric value
+        title_label (QLabel): Label displaying the metric title
+        value_label (QLabel): Label displaying the metric value
+
+    Example:
+        ```python
+        card = MetricsCardWidget("P&L", "$1,234.56")
+        card.set_value("$2,345.67")  # Update the value
+        ```
+    """
 
     def __init__(self, title: str, value: str = "—", parent=None):
         super().__init__(parent)
@@ -78,7 +102,43 @@ class MetricsCardWidget(QFrame):
 
 
 class LiveMetricsWidget(QWidget):
-    """Widget for displaying live backtest metrics."""
+    """
+    Widget for displaying live backtest metrics.
+
+    This widget provides a comprehensive dashboard for monitoring real-time
+    performance metrics during backtest execution. It displays key performance
+    indicators in a grid layout using metric cards.
+
+    The widget tracks and displays:
+    - Current P&L (Profit and Loss)
+    - Total number of trades executed
+    - Win rate percentage
+    - Current drawdown
+    - Sharpe ratio (if calculable)
+    - Maximum drawdown
+    - Average trade duration
+
+    Key Features:
+    - Real-time metric updates during execution
+    - Professional card-based layout
+    - Color-coded values for positive/negative metrics
+    - Responsive grid layout
+    - Automatic value formatting
+
+    Attributes:
+        metrics_cards (Dict[str, MetricsCardWidget]): Dictionary of metric cards
+        metrics_layout (QGridLayout): Grid layout for metric cards
+
+    Example:
+        ```python
+        metrics_widget = LiveMetricsWidget()
+        metrics_widget.update_metrics({
+            "pnl": "$1,234.56",
+            "trades": "45",
+            "win_rate": "65.2%"
+        })
+        ```
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -265,13 +325,57 @@ class LogWidget(QWidget):
 
 class ExecutionMonitorWidget(QWidget):
     """
-    Main widget for execution monitoring.
+    Main widget for execution monitoring and backtest management.
 
-    This widget provides:
-    - Real-time progress tracking
-    - Live metrics display
-    - Execution log
-    - Results summary
+    This is the central component for monitoring backtest execution in the
+    Backtester GUI. It provides a comprehensive interface for starting,
+    monitoring, and analyzing backtest execution with real-time updates.
+
+    The widget consists of several key sections:
+    1. Control Panel: Start/stop buttons and execution controls
+    2. Progress Tracking: Real-time progress bar and status updates
+    3. Live Metrics: Real-time performance indicators during execution
+    4. Execution Log: Detailed logging of backtest execution steps
+    5. Results Summary: Post-execution analysis and results display
+
+    Key Features:
+    - Real-time progress monitoring with percentage completion
+    - Live performance metrics updating during execution
+    - Detailed execution logging with timestamps
+    - Start/stop/pause controls for backtest execution
+    - Results visualization and export capabilities
+    - Error handling and user feedback
+    - Integration with the visualizer for detailed analysis
+
+    Attributes:
+        backtest_model (BacktestModel): Manages backtest configuration and data
+        strategy_model (StrategyModel): Manages strategy configuration
+        execution_controller (ExecutionController): Handles backtest execution
+        live_metrics (LiveMetricsWidget): Widget for live performance metrics
+        progress_bar (QProgressBar): Progress tracking bar
+        execution_log (QTextEdit): Detailed execution logging
+        results_table (QTableWidget): Results summary table
+
+    Signals:
+        backtest_started(): Emitted when backtest execution begins
+        backtest_finished(object): Emitted when backtest completes (TradeRegistry results)
+        backtest_error(str): Emitted when backtest encounters an error (error_message)
+        progress_updated(int): Emitted with progress updates (percentage)
+        metrics_updated(dict): Emitted with live metrics updates (metrics_dict)
+
+    Example:
+        ```python
+        from src.backtester.gui.widgets.execution_monitor import ExecutionMonitorWidget
+        from src.backtester.gui.models.backtest_model import BacktestModel
+        from src.backtester.gui.models.strategy_model import StrategyModel
+        from src.backtester.gui.controllers.execution_controller import ExecutionController
+
+        backtest_model = BacktestModel()
+        strategy_model = StrategyModel()
+        controller = ExecutionController(backtest_model)
+        monitor = ExecutionMonitorWidget(backtest_model, strategy_model, controller)
+        monitor.backtest_finished.connect(self.on_backtest_completed)
+        ```
     """
 
     def __init__(
