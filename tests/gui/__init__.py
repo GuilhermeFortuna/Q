@@ -1,0 +1,2 @@
+"""GUI interaction tests package."""
+

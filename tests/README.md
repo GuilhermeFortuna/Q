@@ -37,6 +37,8 @@ tests/
 │   ├── test_models.py         # Data model tests
 │   ├── test_plots.py          # Plot component tests
 │   └── test_windows.py        # Window component tests
+├── gui/                      # GUI interaction tests
+│   └── test_main_window.py   # Backtester main window smoke tests
 ├── bridge/                    # Bridge module tests
 │   └── test_data_manager.py   # Data manager tests
 ├── indicators/                # Indicator tests
