@@ -370,3 +370,4 @@ class TestStoreUtilities:
             assert loaded_data['string_col'].dtype == 'object'
             assert loaded_data['bool_col'].dtype == 'bool'
             assert loaded_data['datetime_col'].dtype == 'datetime64[ns]'
+

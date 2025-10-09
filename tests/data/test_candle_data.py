@@ -422,3 +422,4 @@ class TestCandleData:
             # Should raise error for missing datetime
             with pytest.raises(ValueError, match="Data must have a DatetimeIndex or a 'datetime' column"):
                 candle_data.store_data(root_dir=temp_dir, mode='overwrite')
+

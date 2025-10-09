@@ -331,3 +331,4 @@ class TestTickData:
         # Should handle missing columns gracefully
         assert len(tick_data.df) == 3
         assert 'volume' not in tick_data.df.columns
+
