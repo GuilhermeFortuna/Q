@@ -1,7 +1,0 @@
-Metadata-Version: 2.4
-Name: visualizer
-Version: 0.1.0
-Summary: Market data visualization tools
-Requires-Dist: pyqtgraph==0.13.7
-Requires-Dist: pyside6==6.7.2
-Requires-Dist: flask==3.0.3

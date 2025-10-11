@@ -1,3 +1,13 @@
 *.pyc
 __pycache__/
 scripts/
+
+# Python packaging/build artifacts
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# --- EXCEPTION: keep anything under the repo-root vendors/ folder
+!/vendors/
+!/vendors/**
