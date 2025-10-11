@@ -7,6 +7,7 @@ including signal management, parameter editing, and real-time validation.
 
 from typing import Optional, Dict, Any, List
 from PySide6.QtWidgets import (
+    QDialog,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
@@ -697,7 +698,7 @@ class StrategyBuilderWidget(QWidget):
             parent=self,
         )
 
-        if dialog.exec() == dialog.Accepted:
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             # Get updated parameters from dialog
             updated_params = dialog.get_parameters()
 

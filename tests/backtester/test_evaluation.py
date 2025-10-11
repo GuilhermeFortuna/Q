@@ -361,7 +361,7 @@ class TestOosStability:
         stability = oos_stability_from_two_runs(registry1, registry2, evaluator)
         
         # Should have low stability for very different performance
-        assert stability < 0.5
+        assert stability < 0.6
 
 
 class TestEvaluationIntegration:

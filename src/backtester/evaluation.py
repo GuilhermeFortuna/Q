@@ -220,7 +220,7 @@ def metrics_from_trade_registry(tr: TradeRegistry) -> Dict[str, float]:
             float(len(tr.trades)) if getattr(tr, "trades", None) is not None else 0.0
         ),
         "profit_factor": float(getattr(tr, "profit_factor", 0.0)),
-        "max_drawdown": dd_frac if dd_frac is not None else 1.0,
+        "max_drawdown": dd_frac if dd_frac is not None else 0.0,
         "win_rate": win_rate,
         # Optionals
         "sharpe": get_optional("sharpe", 0.0),

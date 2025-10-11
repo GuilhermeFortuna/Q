@@ -2,6 +2,7 @@
 Tests for the backtester data module.
 """
 
+import pandas as pd
 from src.data.data import *
 
 
