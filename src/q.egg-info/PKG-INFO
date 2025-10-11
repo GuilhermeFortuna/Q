@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: q
+Version: 0.1.0
+Summary: Quantitative Trading Research Toolkit
+Requires-Python: >=3.10
+Requires-Dist: black>=25.1.0
+Requires-Dist: metatrader5>=5.0.5200
+Requires-Dist: pyqtgraph==0.13.7
+Requires-Dist: pyside6>=6.8.0
+Requires-Dist: flask==3.0.3
+Requires-Dist: tqdm>=4.67.1
+Requires-Dist: pandas>=2.2.2
+Requires-Dist: setuptools>=80.9.0
+Requires-Dist: numpy>=1.26.4
+Requires-Dist: backtester
+Requires-Dist: visualizer
+Requires-Dist: optuna>=3.6.1
+Requires-Dist: docutils>=0.22
+Requires-Dist: pandas-ta>=0.4.0
+Requires-Dist: coverage>=7.10.6
+Requires-Dist: pytest>=8.4.2
+Requires-Dist: optuna-dashboard>=0.14.0
+Requires-Dist: psycopg2-binary>=2.9.9
+Requires-Dist: rich>=14.1.0
+Requires-Dist: pyarrow>=21.0.0

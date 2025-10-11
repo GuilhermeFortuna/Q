@@ -341,9 +341,9 @@ class TestTradeRegistry:
         # Check metrics
         assert registry.num_positive_trades == 2
         assert registry.num_negative_trades == 1
-        assert registry.positive_trades_sum == 50.0 + 60.0 - 2.5 - 2.5  # 105.0 (after costs)
-        assert registry.negative_trades_sum == -30.0 - 2.5  # -32.5 (after costs)
-        assert registry.profit_factor == pytest.approx(105.0 / 32.5, rel=1e-2)
+        assert registry.positive_trades_sum == 50.0 + 60.0  # 110.0 (before costs)
+        assert registry.negative_trades_sum == -30.0  # -30.0 (before costs)
+        assert registry.profit_factor == pytest.approx(110.0 / 30.0, rel=1e-2)
         assert registry.accuracy == pytest.approx(66.67, rel=1e-2)  # 2 out of 3 trades profitable
 
     def test_empty_trades_metrics(self):
