@@ -113,6 +113,7 @@ class EngineCandleData(EngineData):
         super().__init__(data_obj=data_obj)
         self.timeframe = data_obj.timeframe
         # Always include datetime field explicitly; assume timeline is the index
+        self.set_values_as_attrs()
 
     def set_values_as_attrs(self) -> None:
         # Ensure sorted timeline and standardized pandas.DatetimeIndex

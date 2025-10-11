@@ -220,8 +220,18 @@ def simple_strategy():
         def compute_indicators(self, data: dict) -> None:
             # Add a simple moving average
             if 'candle' in data:
-                df = data['candle'].df
-                df['sma_10'] = df['close'].rolling(10).mean()
+                candle = data['candle']
+                if hasattr(candle, 'df'):
+                    # Original CandleData
+                    df = candle.df
+                    df['sma_10'] = df['close'].rolling(10).mean()
+                else:
+                    # EngineCandleData - compute SMA on numpy arrays
+                    close_prices = candle.close
+                    sma_10 = np.convolve(close_prices, np.ones(10)/10, mode='valid')
+                    # Pad with NaN for the first 9 values
+                    sma_10 = np.concatenate([np.full(9, np.nan), sma_10])
+                    candle.sma_10 = sma_10
         
         def entry_strategy(self, i: int, data: dict):
             if 'candle' not in data or i < 10:
@@ -245,7 +255,7 @@ def simple_strategy():
             candle = data['candle']
             if i >= 10 and candle.close[i] < candle.sma_10[i]:
                 return TradeOrder(
-                    type='sell',
+                    type='close',
                     price=float(candle.close[i]),
                     datetime=candle.datetime_index[i],
                     comment='sma_crossover_exit',

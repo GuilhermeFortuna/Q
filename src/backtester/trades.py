@@ -402,6 +402,9 @@ class TradeRegistry:
         self.trades.at[idx, 'exit_comment'] = comment
 
     def trades_today(self, date: dt.datetime) -> int:
+        # Ensure 'end' column is datetime
+        if not pd.api.types.is_datetime64_any_dtype(self.trades['end']):
+            self.trades['end'] = pd.to_datetime(self.trades['end'])
         return len(self.trades.loc[self.trades['end'].dt.date == date.date()])
 
     def register_order(self, order: TradeOrder) -> None:

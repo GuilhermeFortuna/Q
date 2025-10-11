@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: pandas-ta
+Version: 0.3.14b0
+Summary: Technical Analysis Indicators - vendored copy
+Requires-Python: >=3.10
