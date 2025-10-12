@@ -134,8 +134,9 @@ class StrategyModel(QObject):
     signal_updated = Signal(str)  # signal_id
     validation_changed = Signal(bool)  # is_valid
 
-    def __init__(self, parent=None):
+    def __init__(self, backtest_model=None, parent=None):
         super().__init__(parent)
+        self._backtest_model = backtest_model
         self._current_strategy: Optional[StrategyConfig] = None
         # Cache of discovered signal classes for instantiation (must be before _initialize_signal_library)
         self._signal_classes: Dict[str, type] = {}
@@ -389,9 +390,15 @@ class StrategyModel(QObject):
                 print("No enabled signals to compile")
                 return None
 
+            # Get always_active setting from backtest configuration
+            always_active = True  # Default fallback
+            if self._backtest_model:
+                backtest_config = self._backtest_model.get_backtest_config()
+                always_active = backtest_config.always_active
+
             # Create CompositeStrategy with compiled signals
             strategy = CompositeStrategy(
-                signals=signal_instances, always_active=True  # Default to always active
+                signals=signal_instances, always_active=always_active
             )
 
             return strategy

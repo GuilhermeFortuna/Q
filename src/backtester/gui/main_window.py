@@ -100,8 +100,8 @@ class BacktesterMainWindow(QMainWindow):
         self.setMinimumSize(1200, 800)
 
         # Initialize models and controllers
-        self.strategy_model = StrategyModel()
         self.backtest_model = BacktestModel()
+        self.strategy_model = StrategyModel(self.backtest_model)
         self.strategy_controller = StrategyController(self.strategy_model)
         self.execution_controller = ExecutionController(self.backtest_model)
 
