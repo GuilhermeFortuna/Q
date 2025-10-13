@@ -27,8 +27,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QMenu,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QPoint
-from PySide6.QtGui import QFont, QColor, QPalette
+from PySide6.QtCore import Qt, Signal, QTimer, QPoint, QMimeData
+from PySide6.QtGui import QFont, QColor, QPalette, QDrag
 
 from ..models.strategy_model import StrategyModel, SignalRole, SignalConfig
 from ..controllers.strategy_controller import StrategyController
@@ -68,6 +68,8 @@ class SignalTableWidget(QTableWidget):
     signal_edited = Signal(str)  # signal_id
     signal_removed = Signal(str)  # signal_id
     signal_toggled = Signal(str, bool)  # signal_id, enabled
+    signal_moved = Signal(str, int, int)  # signal_id, old_index, new_index
+    signal_duplicated = Signal(str)  # signal_id
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -87,6 +89,8 @@ class SignalTableWidget(QTableWidget):
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setSortingEnabled(False)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropOverwriteMode(False)
 
         # Set column widths
         header = self.horizontalHeader()
@@ -103,6 +107,10 @@ class SignalTableWidget(QTableWidget):
         # Connect signals
         self.cellChanged.connect(self._on_cell_changed)
         self.cellClicked.connect(self._on_cell_clicked)
+        
+        # Enable context menu
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
 
     def _apply_styling(self):
         """Apply JetBrains-inspired styling to the table."""
@@ -290,6 +298,91 @@ class SignalTableWidget(QTableWidget):
         """Clear all signal rows."""
         self.setRowCount(0)
 
+    def dropEvent(self, event):
+        """Handle drop events for drag-and-drop reordering."""
+        if event.source() == self:
+            # Get the source and target rows
+            source_row = self.currentRow()
+            target_row = self.indexAt(event.pos()).row()
+            
+            if source_row == target_row or source_row == -1 or target_row == -1:
+                event.ignore()
+                return
+            
+            # Get signal ID from source row
+            signal_name_item = self.item(source_row, 1)
+            if not signal_name_item:
+                event.ignore()
+                return
+                
+            signal_id = signal_name_item.data(Qt.UserRole)
+            if not signal_id:
+                event.ignore()
+                return
+            
+            # Emit signal for move operation
+            self.signal_moved.emit(signal_id, source_row, target_row)
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragEnterEvent(self, event):
+        """Handle drag enter events."""
+        if event.source() == self:
+            event.accept()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        """Handle drag move events."""
+        if event.source() == self:
+            event.accept()
+        else:
+            event.ignore()
+
+    def _show_context_menu(self, position: QPoint):
+        """Show context menu for signal table."""
+        item = self.itemAt(position)
+        if not item:
+            return
+
+        # Get the row and signal ID
+        row = item.row()
+        signal_name_item = self.item(row, 1)
+        if not signal_name_item:
+            return
+
+        signal_id = signal_name_item.data(Qt.UserRole)
+        if not signal_id:
+            return
+
+        # Create context menu
+        context_menu = QMenu(self)
+        
+        # Duplicate signal action
+        duplicate_action = context_menu.addAction("Duplicate Signal")
+        duplicate_action.setToolTip("Create a copy of this signal with the same parameters")
+        duplicate_action.triggered.connect(lambda: self._duplicate_signal(signal_id))
+        
+        # Edit signal action
+        edit_action = context_menu.addAction("Edit Signal")
+        edit_action.setToolTip("Edit signal parameters")
+        edit_action.triggered.connect(lambda: self.signal_edited.emit(signal_id))
+        
+        context_menu.addSeparator()
+        
+        # Remove signal action
+        remove_action = context_menu.addAction("Remove Signal")
+        remove_action.setToolTip("Remove this signal from the strategy")
+        remove_action.triggered.connect(lambda: self.signal_removed.emit(signal_id))
+        
+        # Show context menu
+        context_menu.exec(self.mapToGlobal(position))
+
+    def _duplicate_signal(self, signal_id: str):
+        """Duplicate a signal."""
+        self.signal_duplicated.emit(signal_id)
+
 
 class ValidationPanel(QFrame):
     """Panel for displaying validation errors and warnings."""
@@ -459,10 +552,12 @@ class StrategyBuilderWidget(QWidget):
 
         # Action buttons
         self.new_strategy_btn = QPushButton("New Strategy")
+        self.new_strategy_btn.setToolTip("Create a new trading strategy (Ctrl+N)")
         self.new_strategy_btn.clicked.connect(self._on_new_strategy)
         header_layout.addWidget(self.new_strategy_btn)
 
         self.compile_btn = QPushButton("Compile Strategy")
+        self.compile_btn.setToolTip("Compile and validate the current strategy configuration")
         self.compile_btn.setEnabled(False)
         self.compile_btn.clicked.connect(self._on_compile_strategy)
         header_layout.addWidget(self.compile_btn)
@@ -487,18 +582,24 @@ class StrategyBuilderWidget(QWidget):
 
         # Strategy name
         name_layout = QHBoxLayout()
-        name_layout.addWidget(QLabel("Name:"))
+        name_label = QLabel("Name:")
+        name_label.setToolTip("The name of the current trading strategy")
+        name_layout.addWidget(name_label)
         self.strategy_name_label = QLabel("No strategy loaded")
         self.strategy_name_label.setStyleSheet("font-weight: bold; color: #fff;")
+        self.strategy_name_label.setToolTip("Current strategy name")
         name_layout.addWidget(self.strategy_name_label)
         name_layout.addStretch()
         info_layout.addLayout(name_layout)
 
         # Strategy description
         desc_layout = QHBoxLayout()
-        desc_layout.addWidget(QLabel("Description:"))
+        desc_label = QLabel("Description:")
+        desc_label.setToolTip("Description of the trading strategy")
+        desc_layout.addWidget(desc_label)
         self.strategy_desc_label = QLabel("No description")
         self.strategy_desc_label.setStyleSheet("color: #ccc;")
+        self.strategy_desc_label.setToolTip("Current strategy description")
         desc_layout.addWidget(self.strategy_desc_label)
         desc_layout.addStretch()
         info_layout.addLayout(desc_layout)
@@ -517,12 +618,14 @@ class StrategyBuilderWidget(QWidget):
         table_actions_layout = QHBoxLayout()
 
         self.move_up_btn = QPushButton("Move Up")
+        self.move_up_btn.setToolTip("Move selected signal up in the execution order (Ctrl+Up)")
         self.move_up_btn.setEnabled(False)
         self.move_up_btn.setMinimumHeight(28)
         self.move_up_btn.clicked.connect(self._on_move_signal_up)
         table_actions_layout.addWidget(self.move_up_btn)
 
         self.move_down_btn = QPushButton("Move Down")
+        self.move_down_btn.setToolTip("Move selected signal down in the execution order (Ctrl+Down)")
         self.move_down_btn.setEnabled(False)
         self.move_down_btn.setMinimumHeight(28)
         self.move_down_btn.clicked.connect(self._on_move_signal_down)
@@ -531,6 +634,7 @@ class StrategyBuilderWidget(QWidget):
         table_actions_layout.addStretch()
 
         self.clear_signals_btn = QPushButton("Clear All")
+        self.clear_signals_btn.setToolTip("Remove all signals from the strategy")
         self.clear_signals_btn.setEnabled(False)
         self.clear_signals_btn.setMinimumSize(100, 32)
         self.clear_signals_btn.clicked.connect(self._on_clear_signals)
@@ -577,6 +681,8 @@ class StrategyBuilderWidget(QWidget):
         self.signal_table.signal_edited.connect(self._on_edit_signal)
         self.signal_table.signal_removed.connect(self._on_remove_signal)
         self.signal_table.signal_toggled.connect(self._on_toggle_signal)
+        self.signal_table.signal_moved.connect(self._on_signal_moved)
+        self.signal_table.signal_duplicated.connect(self._on_duplicate_signal)
 
         # Model signals
         self.strategy_model.strategy_changed.connect(self._on_strategy_changed)
@@ -678,7 +784,7 @@ class StrategyBuilderWidget(QWidget):
     def _on_add_signal_requested(self, signal_class_name: str, role: SignalRole):
         """Handle add signal request from signal library."""
         try:
-            signal_id = self.strategy_model.add_signal(signal_class_name, role)
+            signal_id = self.strategy_model.add_signal_with_undo(signal_class_name, role)
             self.strategy_changed.emit()
         except Exception as e:
             QMessageBox.warning(
@@ -732,6 +838,25 @@ class StrategyBuilderWidget(QWidget):
             signal_config.enabled = enabled
             self.strategy_model.strategy_changed.emit()
 
+    def _on_signal_moved(self, signal_id: str, old_index: int, new_index: int):
+        """Handle signal drag-and-drop move."""
+        try:
+            # Use undo-enabled move operation
+            self.strategy_model.move_signal_with_undo(signal_id, new_index)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Move Signal Error", f"Failed to move signal: {str(e)}"
+            )
+
+    def _on_duplicate_signal(self, signal_id: str):
+        """Handle signal duplication."""
+        try:
+            self.strategy_model.duplicate_signal_with_undo(signal_id)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Duplicate Signal Error", f"Failed to duplicate signal: {str(e)}"
+            )
+
     def _on_clear_signals(self):
         """Handle clear all signals button click."""
         reply = QMessageBox.question(
@@ -754,33 +879,27 @@ class StrategyBuilderWidget(QWidget):
         """Handle move signal up button click."""
         current_row = self.signal_table.currentRow()
         if current_row > 0:
-            # Get signal IDs
-            strategy_config = self.strategy_model.get_strategy_config()
-            if strategy_config and len(strategy_config.signals) > current_row:
-                # Swap signals in the model
-                signals = strategy_config.signals
-                signals[current_row], signals[current_row - 1] = (
-                    signals[current_row - 1],
-                    signals[current_row],
-                )
-                self.strategy_model.strategy_changed.emit()
-                self.signal_table.selectRow(current_row - 1)
+            # Get signal ID from current row
+            signal_name_item = self.signal_table.item(current_row, 1)
+            if signal_name_item:
+                signal_id = signal_name_item.data(Qt.UserRole)
+                if signal_id:
+                    # Use undo-enabled move
+                    if self.strategy_model.move_signal_with_undo(signal_id, current_row - 1):
+                        self.signal_table.selectRow(current_row - 1)
 
     def _on_move_signal_down(self):
         """Handle move signal down button click."""
         current_row = self.signal_table.currentRow()
         if current_row < self.signal_table.rowCount() - 1:
-            # Get signal IDs
-            strategy_config = self.strategy_model.get_strategy_config()
-            if strategy_config and len(strategy_config.signals) > current_row + 1:
-                # Swap signals in the model
-                signals = strategy_config.signals
-                signals[current_row], signals[current_row + 1] = (
-                    signals[current_row + 1],
-                    signals[current_row],
-                )
-                self.strategy_model.strategy_changed.emit()
-                self.signal_table.selectRow(current_row + 1)
+            # Get signal ID from current row
+            signal_name_item = self.signal_table.item(current_row, 1)
+            if signal_name_item:
+                signal_id = signal_name_item.data(Qt.UserRole)
+                if signal_id:
+                    # Use undo-enabled move
+                    if self.strategy_model.move_signal_with_undo(signal_id, current_row + 1):
+                        self.signal_table.selectRow(current_row + 1)
 
     def _on_strategy_changed(self):
         """Handle strategy model changes."""

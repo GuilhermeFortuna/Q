@@ -14,6 +14,7 @@ from enum import Enum
 from src.backtester.strategy import TradingStrategy
 from src.backtester.trades import TradeOrder
 from src.strategies import TradingSignal
+from ..utils.undo_stack import UndoStack, AddSignalCommand, RemoveSignalCommand, EditSignalCommand, MoveSignalCommand, ToggleSignalCommand, ClearSignalsCommand
 
 
 class SignalType(Enum):
@@ -133,6 +134,8 @@ class StrategyModel(QObject):
     signal_removed = Signal(str)  # signal_id
     signal_updated = Signal(str)  # signal_id
     validation_changed = Signal(bool)  # is_valid
+    undo_available_changed = Signal(bool)  # undo_available
+    redo_available_changed = Signal(bool)  # redo_available
 
     def __init__(self, backtest_model=None, parent=None):
         super().__init__(parent)
@@ -145,6 +148,19 @@ class StrategyModel(QObject):
         )
         self._validation_errors: List[str] = []
         self._strategy_file_path: Optional[str] = None
+        
+        # Initialize undo stack
+        self.undo_stack = UndoStack()
+        self.undo_stack.undo_available_changed.connect(self._on_undo_available_changed)
+        self.undo_stack.redo_available_changed.connect(self._on_redo_available_changed)
+
+    def _on_undo_available_changed(self, available: bool):
+        """Handle undo availability change."""
+        self.undo_available_changed.emit(available)
+
+    def _on_redo_available_changed(self, available: bool):
+        """Handle redo availability change."""
+        self.redo_available_changed.emit(available)
 
     def _initialize_signal_library(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -495,6 +511,194 @@ class StrategyModel(QObject):
         self.strategy_changed.emit()
 
         return signal_id
+
+    def add_signal_with_undo(self, signal_class_name: str, role: SignalRole, **kwargs) -> str:
+        """
+        Add a signal to the current strategy with undo support.
+
+        Args:
+            signal_class_name: The name of the signal class
+            role: The role of the signal
+            **kwargs: Optional parameter overrides
+
+        Returns:
+            The signal_id of the newly added signal
+        """
+        # Create and execute undo command
+        command = AddSignalCommand(self, signal_class_name, role)
+        if self.undo_stack.execute_command(command):
+            return command.signal_id
+        else:
+            raise RuntimeError("Failed to add signal")
+
+    def add_signal_with_id(self, signal_class_name: str, role: SignalRole, signal_id: str, **kwargs) -> str:
+        """
+        Add a signal with a specific ID (for undo operations).
+        
+        Args:
+            signal_class_name: The name of the signal class
+            role: The role of the signal
+            signal_id: The specific signal ID to use
+            **kwargs: Optional parameter overrides
+            
+        Returns:
+            The signal_id
+        """
+        if not self._current_strategy:
+            raise ValueError("No strategy loaded")
+
+        # Get signal template
+        signal_template = self._available_signals.get(signal_class_name)
+        if not signal_template:
+            raise ValueError(f"Unknown signal class: {signal_class_name}")
+
+        # Create signal configuration
+        signal_config = SignalConfig(
+            signal_id=signal_id,
+            signal_type=signal_class_name,
+            role=role,
+            parameters=signal_template["parameters"].copy(),
+            description=signal_template["description"],
+        )
+
+        # Update parameters with provided values
+        for param_name, param_value in kwargs.items():
+            if param_name in signal_config.parameters:
+                signal_config.parameters[param_name].value = param_value
+
+        # Add new signals at the beginning of the list so they appear first
+        self._current_strategy.signals.insert(0, signal_config)
+        self._update_modified_time()
+        self.signal_added.emit(signal_id)
+        self.strategy_changed.emit()
+
+        return signal_id
+
+    def add_signal_with_config(self, signal_config: SignalConfig) -> str:
+        """
+        Add a signal using an existing configuration (for undo operations).
+        
+        Args:
+            signal_config: The signal configuration to add
+            
+        Returns:
+            The signal_id
+        """
+        if not self._current_strategy:
+            raise ValueError("No strategy loaded")
+
+        # Add new signals at the beginning of the list so they appear first
+        self._current_strategy.signals.insert(0, signal_config)
+        self._update_modified_time()
+        self.signal_added.emit(signal_config.signal_id)
+        self.strategy_changed.emit()
+
+        return signal_config.signal_id
+
+    def undo(self) -> bool:
+        """Undo the last operation."""
+        return self.undo_stack.undo()
+
+    def redo(self) -> bool:
+        """Redo the last undone operation."""
+        return self.undo_stack.redo()
+
+    def can_undo(self) -> bool:
+        """Check if undo is available."""
+        return self.undo_stack.can_undo()
+
+    def can_redo(self) -> bool:
+        """Check if redo is available."""
+        return self.undo_stack.can_redo()
+
+    def get_undo_description(self) -> Optional[str]:
+        """Get description of the next command to undo."""
+        return self.undo_stack.get_undo_description()
+
+    def get_redo_description(self) -> Optional[str]:
+        """Get description of the next command to redo."""
+        return self.undo_stack.get_redo_description()
+
+    def move_signal(self, signal_id: str, new_index: int) -> bool:
+        """Move a signal to a new position in the strategy."""
+        if not self._current_strategy:
+            return False
+
+        # Find the signal
+        signal_index = None
+        for i, signal in enumerate(self._current_strategy.signals):
+            if signal.signal_id == signal_id:
+                signal_index = i
+                break
+
+        if signal_index is None:
+            return False
+
+        # Move the signal
+        signal = self._current_strategy.signals.pop(signal_index)
+        self._current_strategy.signals.insert(new_index, signal)
+        
+        self._update_modified_time()
+        self.strategy_changed.emit()
+        return True
+
+    def move_signal_with_undo(self, signal_id: str, new_index: int) -> bool:
+        """Move a signal with undo support."""
+        if not self._current_strategy:
+            return False
+
+        # Find current index
+        old_index = None
+        for i, signal in enumerate(self._current_strategy.signals):
+            if signal.signal_id == signal_id:
+                old_index = i
+                break
+
+        if old_index is None:
+            return False
+
+        # Create and execute move command
+        command = MoveSignalCommand(self, signal_id, old_index, new_index)
+        return self.undo_stack.execute_command(command)
+
+    def duplicate_signal_with_undo(self, signal_id: str) -> str:
+        """Duplicate a signal with undo support."""
+        if not self._current_strategy:
+            raise ValueError("No strategy loaded")
+
+        # Find the signal to duplicate
+        original_signal = None
+        for signal in self._current_strategy.signals:
+            if signal.signal_id == signal_id:
+                original_signal = signal
+                break
+
+        if not original_signal:
+            raise ValueError(f"Signal not found: {signal_id}")
+
+        # Create a copy of the signal configuration
+        import uuid
+        import copy
+        
+        new_signal_id = str(uuid.uuid4())
+        duplicated_signal = SignalConfig(
+            signal_id=new_signal_id,
+            signal_type=original_signal.signal_type,
+            role=original_signal.role,
+            parameters=copy.deepcopy(original_signal.parameters),
+            description=original_signal.description,
+            enabled=original_signal.enabled
+        )
+
+        # Add the duplicated signal right after the original
+        original_index = self._current_strategy.signals.index(original_signal)
+        self._current_strategy.signals.insert(original_index + 1, duplicated_signal)
+        
+        self._update_modified_time()
+        self.signal_added.emit(new_signal_id)
+        self.strategy_changed.emit()
+
+        return new_signal_id
 
     def remove_signal(self, signal_id: str) -> bool:
         """Remove a signal from the current strategy."""

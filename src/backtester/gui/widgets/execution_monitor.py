@@ -5,6 +5,7 @@ This module contains the interface for monitoring backtest execution,
 including real-time progress tracking, live metrics, and results display.
 """
 
+import time
 from typing import Optional, Dict, Any, List
 from PySide6.QtWidgets import (
     QWidget,
@@ -31,6 +32,7 @@ from PySide6.QtGui import QFont, QPalette
 from ..models.backtest_model import BacktestModel
 from ..models.strategy_model import StrategyModel
 from ..controllers.execution_controller import ExecutionController
+from .results_panel import ResultsPanelWidget
 
 
 class MetricsCardWidget(QFrame):
@@ -231,17 +233,32 @@ class ProgressWidget(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("%p% - %v/%m")
         layout.addWidget(self.progress_bar)
+
+        # Progress details
+        self.progress_details = QLabel("")
+        self.progress_details.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(self.progress_details)
 
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setStyleSheet("color: #888;")
         layout.addWidget(self.status_label)
 
-        # ETA label
+        # ETA and speed info
+        eta_layout = QHBoxLayout()
+        
         self.eta_label = QLabel("")
         self.eta_label.setStyleSheet("color: #888; font-size: 10px;")
-        layout.addWidget(self.eta_label)
+        eta_layout.addWidget(self.eta_label)
+        
+        self.speed_label = QLabel("")
+        self.speed_label.setStyleSheet("color: #888; font-size: 10px;")
+        eta_layout.addWidget(self.speed_label)
+        
+        eta_layout.addStretch()
+        layout.addLayout(eta_layout)
 
     def _apply_styling(self):
         """Apply JetBrains-inspired styling to the widget."""
@@ -251,9 +268,27 @@ class ProgressWidget(QWidget):
             theme.get_main_window_stylesheet()
         )
 
-    def set_progress(self, progress: int):
-        """Set the progress percentage."""
+    def set_progress(self, progress: int, details: str = "", eta: str = "", speed: str = ""):
+        """Set the progress percentage with detailed information."""
         self.progress_bar.setValue(progress)
+        
+        if details:
+            self.progress_details.setText(details)
+            self.progress_details.setVisible(True)
+        else:
+            self.progress_details.setVisible(False)
+            
+        if eta:
+            self.eta_label.setText(f"ETA: {eta}")
+            self.eta_label.setVisible(True)
+        else:
+            self.eta_label.setVisible(False)
+            
+        if speed:
+            self.speed_label.setText(f"Speed: {speed}")
+            self.speed_label.setVisible(True)
+        else:
+            self.speed_label.setVisible(False)
 
     def set_status(self, status: str):
         """Set the status message."""
@@ -465,19 +500,14 @@ class ExecutionMonitorWidget(QWidget):
         return widget
 
     def _create_results_tab(self) -> QWidget:
-        """Create the results display tab with integrated visualizer."""
+        """Create the results display tab with integrated results panel."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # Create a placeholder widget that will be replaced with visualizer content
-        self.results_placeholder = QLabel("No results available")
-        self.results_placeholder.setAlignment(Qt.AlignCenter)
-        self.results_placeholder.setStyleSheet("color: #888; font-size: 14px;")
-        layout.addWidget(self.results_placeholder)
-
-        # Store reference for the visualizer widget
-        self.results_visualizer_widget = None
+        # Create results panel
+        self.results_panel = ResultsPanelWidget()
+        layout.addWidget(self.results_panel)
 
         return widget
 
@@ -623,6 +653,10 @@ class ExecutionMonitorWidget(QWidget):
         self.progress_widget.set_status("Backtest completed")
         self.update_timer.stop()
         self.log_widget.add_log_message("Backtest completed successfully")
+        
+        # Load results into the results panel
+        if hasattr(self, 'results_panel') and results:
+            self._load_results_to_panel(results)
 
         # Update results display
         self._update_results_display(results)
@@ -636,8 +670,105 @@ class ExecutionMonitorWidget(QWidget):
         self.log_widget.add_log_message(f"ERROR: {error_message}")
 
     def _on_progress_updated(self, progress: int):
-        """Handle progress updates."""
-        self.progress_widget.set_progress(progress)
+        """Handle progress updates with ETA and speed calculation."""
+        # Calculate ETA and speed if we have timing information
+        current_time = time.time()
+        
+        if not hasattr(self, '_start_time'):
+            self._start_time = current_time
+            self._last_progress_time = current_time
+            self._last_progress = 0
+        
+        # Calculate speed (progress per second)
+        time_elapsed = current_time - self._start_time
+        progress_delta = progress - self._last_progress
+        time_delta = current_time - self._last_progress_time
+        
+        if time_delta > 0 and progress_delta > 0:
+            speed = progress_delta / time_delta  # progress per second
+            speed_text = f"{speed:.1f}%/s"
+        else:
+            speed_text = ""
+        
+        # Calculate ETA
+        if progress > 0 and time_elapsed > 0:
+            total_time_estimated = time_elapsed * (100 / progress)
+            remaining_time = total_time_estimated - time_elapsed
+            if remaining_time > 0:
+                eta_minutes = int(remaining_time // 60)
+                eta_seconds = int(remaining_time % 60)
+                eta_text = f"{eta_minutes:02d}:{eta_seconds:02d}"
+            else:
+                eta_text = "00:00"
+        else:
+            eta_text = ""
+        
+        # Update progress with details
+        details = f"Processing data points..."
+        self.progress_widget.set_progress(progress, details, eta_text, speed_text)
+        
+        # Update tracking variables
+        self._last_progress = progress
+        self._last_progress_time = current_time
+
+    def _load_results_to_panel(self, results):
+        """Load backtest results into the results panel."""
+        try:
+            # Convert results to the format expected by the results panel
+            results_data = {
+                'metrics': self._extract_metrics_from_results(results),
+                'trades': self._extract_trades_from_results(results),
+                'equity_curve': self._extract_equity_curve_from_results(results)
+            }
+            
+            self.results_panel.load_results(results_data)
+        except Exception as e:
+            self.log_widget.add_log_message(f"Error loading results to panel: {str(e)}")
+
+    def _extract_metrics_from_results(self, results):
+        """Extract metrics from backtest results."""
+        metrics = {}
+        
+        if hasattr(results, 'get_result'):
+            result_data = results.get_result()
+            
+            # Extract key metrics
+            metrics['total_return'] = result_data.get('total_return', 0)
+            metrics['sharpe_ratio'] = result_data.get('sharpe_ratio', 0)
+            metrics['max_drawdown'] = result_data.get('max_drawdown', 0)
+            metrics['win_rate'] = result_data.get('win_rate', 0)
+            metrics['profit_factor'] = result_data.get('profit_factor', 0)
+            metrics['total_trades'] = result_data.get('total_trades', 0)
+            metrics['avg_trade'] = result_data.get('avg_trade', 0)
+            metrics['avg_duration'] = result_data.get('avg_duration', 0)
+        
+        return metrics
+
+    def _extract_trades_from_results(self, results):
+        """Extract trades from backtest results."""
+        trades = []
+        
+        if hasattr(results, 'trades') and results.trades:
+            for trade in results.trades:
+                trade_data = {
+                    'date': str(trade.start) if hasattr(trade, 'start') else '',
+                    'symbol': trade.symbol if hasattr(trade, 'symbol') else '',
+                    'side': 'BUY' if hasattr(trade, 'type') and 'buy' in str(trade.type).lower() else 'SELL',
+                    'quantity': trade.quantity if hasattr(trade, 'quantity') else 0,
+                    'price': trade.buyprice if hasattr(trade, 'buyprice') else 0,
+                    'pnl': trade.profit if hasattr(trade, 'profit') else 0,
+                    'duration': str(trade.end - trade.start) if hasattr(trade, 'start') and hasattr(trade, 'end') else '',
+                    'status': 'Closed' if hasattr(trade, 'end') else 'Open'
+                }
+                trades.append(trade_data)
+        
+        return trades
+
+    def _extract_equity_curve_from_results(self, results):
+        """Extract equity curve from backtest results."""
+        # This would need to be implemented based on how equity data is stored
+        # For now, return empty list
+        return []
 
     def _on_status_updated(self, status: str):
         """Handle status updates."""
