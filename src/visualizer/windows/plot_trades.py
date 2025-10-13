@@ -177,8 +177,21 @@ class PlotTradesWindow(PlotWindow):
         Register a line indicator to be re-rendered on every _render() call,
         sliced to the active time filter.
         """
+        print(f"[PlotTradesWindow] Adding indicator line: {name}")
+        print(f"[PlotTradesWindow] X length: {len(x)}, Y length: {len(y)}")
+        print(f"[PlotTradesWindow] X data type: {type(x)}")
+        print(f"[PlotTradesWindow] Y data type: {type(y)}")
+        
+        # Check X data sample
+        if hasattr(x, '__getitem__'):
+            print(f"[PlotTradesWindow] X sample: {x[:3] if len(x) > 0 else 'empty'}")
+        if hasattr(y, 'isna'):
+            valid_count = (~y.isna()).sum()
+            print(f"[PlotTradesWindow] Y valid values: {valid_count}/{len(y)}")
+        
         # Normalize x to a pandas Index for easy time slicing
         x_idx = pd.Index(x)
+        print(f"[PlotTradesWindow] X Index type: {type(x_idx)}, dtype: {x_idx.dtype}")
         y_ser = pd.Series(y, index=x_idx)
         self._indicator_lines.append(
             dict(x_index=x_idx, y=y_ser, name=name, color=color, width=width)
@@ -751,10 +764,13 @@ class PlotTradesWindow(PlotWindow):
 
     # Internal
     def _render(self) -> None:
+        print(f"[PlotTradesWindow] Starting _render()")
         # Clear hover overlay early to avoid stale highlights during re-render
         if self._hover_controller:
             self._hover_controller.clear_hover()
+        print(f"[PlotTradesWindow] About to clear trades (will remove {len(self._indicator_items)} indicator items)")
         self.clear_trades()
+        print(f"[PlotTradesWindow] After clear_trades(), plot has {len(self.plot.listDataItems())} data items")
 
         # Only remove candlestick if we added it ourselves
         # Don't remove indicators that were added by the parent methods
@@ -783,11 +799,18 @@ class PlotTradesWindow(PlotWindow):
 
         # --- Render indicator lines (slice by the same time filter/index) ---
         if self._indicator_lines:
+            print(f"[PlotTradesWindow] Rendering {len(self._indicator_lines)} indicator lines")
+            
+            # Check current plot view range
+            view_range = self.plot.getViewBox().viewRange()
+            print(f"[PlotTradesWindow] Current plot view range - X: {view_range[0]}, Y: {view_range[1]}")
+            
             # If we do not have an OHLC index (rare), fall back to filter bounds
             start, end = self.get_time_filter()
             for cfg in self._indicator_lines:
                 x_idx: pd.Index = cfg["x_index"]
                 y_ser: pd.Series = cfg["y"]
+                print(f"[PlotTradesWindow] Processing indicator: {cfg['name']}")
                 if self._filter_candles and start is not None and end is not None:
                     if isinstance(x_idx, pd.DatetimeIndex):
                         mask = x_idx.to_series().between(start, end)
@@ -808,18 +831,62 @@ class PlotTradesWindow(PlotWindow):
                     y_slice = y_ser
 
                 if len(x_slice) == 0:
+                    print(f"[PlotTradesWindow] Skipping indicator {cfg['name']}: no data after filtering")
                     continue
 
+                print(f"[PlotTradesWindow] Adding indicator {cfg['name']} with {len(x_slice)} points")
+                
+                # Check for NaN values in the data
+                y_values = np.asarray(y_slice.values, dtype=float)
+                nan_count = np.isnan(y_values).sum()
+                inf_count = np.isinf(y_values).sum()
+                print(f"[PlotTradesWindow] Indicator {cfg['name']}: {nan_count} NaN values, {inf_count} Inf values")
+                
+                # Check data ranges
+                valid_y = y_values[~np.isnan(y_values)]
+                if len(valid_y) > 0:
+                    print(f"[PlotTradesWindow] Indicator {cfg['name']}: Y range: {valid_y.min():.4f} to {valid_y.max():.4f}")
+                    
+                    # Handle X range with proper data type checking
+                    x_values = x_slice.values
+                    if len(x_values) > 0:
+                        try:
+                            # Try to convert to numeric if possible
+                            if hasattr(x_values, 'astype'):
+                                x_numeric = pd.to_numeric(x_values, errors='coerce')
+                                if not x_numeric.isna().all():
+                                    print(f"[PlotTradesWindow] Indicator {cfg['name']}: X range: {x_numeric.min():.4f} to {x_numeric.max():.4f}")
+                                else:
+                                    print(f"[PlotTradesWindow] Indicator {cfg['name']}: X values are non-numeric: {x_values[:3]}...")
+                            else:
+                                print(f"[PlotTradesWindow] Indicator {cfg['name']}: X values are non-numeric: {x_values[:3]}...")
+                        except Exception as e:
+                            print(f"[PlotTradesWindow] Indicator {cfg['name']}: Error formatting X range: {e}")
+                            print(f"[PlotTradesWindow] Indicator {cfg['name']}: X values type: {type(x_values)}, sample: {x_values[:3]}")
+                    else:
+                        print(f"[PlotTradesWindow] Indicator {cfg['name']}: No X values!")
+                else:
+                    print(f"[PlotTradesWindow] Indicator {cfg['name']}: No valid Y values!")
+                
+                if nan_count > 0:
+                    print(f"[PlotTradesWindow] Indicator {cfg['name']}: First few values: {y_values[:10]}")
+                    print(f"[PlotTradesWindow] Indicator {cfg['name']}: Last few values: {y_values[-10:]}")
+                
+                # Handle NaN values by using connect='finite' to skip NaN points
                 pen = pg.mkPen(cfg["color"], width=cfg["width"])
                 item = pg.PlotDataItem(
                     x=x_slice.values,
-                    y=np.asarray(y_slice.values, dtype=float),
+                    y=y_values,
                     pen=pen,
                     name=cfg["name"],
+                    connect='finite'  # Skip NaN values when drawing lines
                 )
                 item.setZValue(2)  # draw above candles, below markers
                 self.plot.addItem(item)
                 self._indicator_items.append(item)
+                print(f"[PlotTradesWindow] Successfully added indicator {cfg['name']} to plot")
+                print(f"[PlotTradesWindow] Indicator {cfg['name']} color: {cfg['color']}, pen: {pen}")
+                print(f"[PlotTradesWindow] Plot now has {len(self.plot.listDataItems())} data items")
 
         if self.trades is None or self.trades.empty:
             self._update_plot_view_range(pd.DataFrame())
@@ -915,6 +982,9 @@ class PlotTradesWindow(PlotWindow):
 
         # Adjust view to current filter selection
         self._update_plot_view_range(df)
+        
+        print(f"[PlotTradesWindow] End of _render() - plot has {len(self.plot.listDataItems())} data items")
+        print(f"[PlotTradesWindow] Indicator items count: {len(self._indicator_items)}")
 
     def _map_time(self, ts: pd.Series) -> pd.Series:
         return (

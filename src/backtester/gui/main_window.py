@@ -416,7 +416,7 @@ class BacktesterMainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
 
-    def _on_backtest_finished(self, results):
+    def _on_backtest_finished(self, results, ohlc_data_with_indicators):
         """Handle backtest completion."""
         self._update_status("Backtest completed")
         self.run_backtest_action.setEnabled(True)

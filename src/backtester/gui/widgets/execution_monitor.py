@@ -615,7 +615,7 @@ class ExecutionMonitorWidget(QWidget):
         self.update_timer.start()
         self.log_widget.add_log_message("Backtest started")
 
-    def _on_backtest_finished(self, results):
+    def _on_backtest_finished(self, results, ohlc_data_with_indicators):
         """Handle backtest completion."""
         self.run_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
@@ -682,9 +682,41 @@ class ExecutionMonitorWidget(QWidget):
             from src.visualizer.windows.backtest_summary import BacktestSummaryWindow
             from src.visualizer.models import BacktestResultModel
 
-            # Get OHLC data if available
+            # Get OHLC data with computed indicators from execution controller
             ohlc_data = None
-            if hasattr(self.backtest_model, 'get_ohlc_data'):
+            if hasattr(self.execution_controller, 'get_current_ohlc_data'):
+                raw_ohlc_data = self.execution_controller.get_current_ohlc_data()
+                if raw_ohlc_data is not None and not raw_ohlc_data.empty:
+                    # Process OHLC data to ensure proper datetime index
+                    ohlc_data = raw_ohlc_data.copy()
+                    
+                    # Check if we have a datetime index
+                    if not isinstance(ohlc_data.index, pd.DatetimeIndex):
+                        # Try to use datetime column if it exists
+                        if 'datetime' in ohlc_data.columns:
+                            # Convert datetime column to proper datetime type first
+                            ohlc_data['datetime'] = pd.to_datetime(ohlc_data['datetime'])
+                            ohlc_data = ohlc_data.set_index('datetime')
+                        elif 'time' in ohlc_data.columns:
+                            # Try 'time' column as well
+                            ohlc_data['time'] = pd.to_datetime(ohlc_data['time'])
+                            ohlc_data = ohlc_data.set_index('time')
+                    
+                    # Ensure the index is properly formatted and timezone-naive
+                    if isinstance(ohlc_data.index, pd.DatetimeIndex):
+                        # Remove timezone info if present
+                        if ohlc_data.index.tz is not None:
+                            ohlc_data.index = ohlc_data.index.tz_localize(None)
+                        
+                        # Sort by datetime to ensure proper chronological order
+                        ohlc_data = ohlc_data.sort_index()
+                        
+                        # Ensure numeric 'time' column exists for plotting
+                        if 'time' not in ohlc_data.columns:
+                            ohlc_data['time'] = list(range(len(ohlc_data)))
+            
+            # Fallback to backtest model if execution controller doesn't have OHLC data
+            if ohlc_data is None and hasattr(self.backtest_model, 'get_ohlc_data'):
                 raw_ohlc_data = self.backtest_model.get_ohlc_data()
                 if raw_ohlc_data is not None and not raw_ohlc_data.empty:
                     # Process OHLC data to ensure proper datetime index
@@ -1115,19 +1147,29 @@ class ExecutionMonitorWidget(QWidget):
             indicator_cols = [
                 col for col in ohlc_data.columns if col.lower() not in standard_cols
             ]
+            
+            print(f"[ExecutionMonitor] OHLC data columns: {list(ohlc_data.columns)}")
+            print(f"[ExecutionMonitor] Detected indicator columns: {indicator_cols}")
 
             # Define a cycle of colors for the indicators
             plot_colors = ["#00FFFF", "#FF00FF", "#FFFF00", "#FFA500", "#DA70D6"]
 
             for i, col_name in enumerate(indicator_cols):
+                # Check if the column has valid data
+                col_data = ohlc_data[col_name]
+                valid_data_count = col_data.notna().sum()
+                print(f"[ExecutionMonitor] Indicator '{col_name}': {valid_data_count}/{len(col_data)} valid values")
+                
                 indicators.append(
                     IndicatorConfig(
                         type="line",
-                        y=ohlc_data[col_name],
+                        y=col_data,
                         name=col_name.upper(),
                         color=plot_colors[i % len(plot_colors)],
                     )
                 )
+            
+            print(f"[ExecutionMonitor] Created {len(indicators)} indicator configs")
 
         def open_trades_chart():
             try:
@@ -1180,6 +1222,7 @@ class ExecutionMonitorWidget(QWidget):
                     title="Trades Chart",
                     block=False,
                 )
+                print(f"[ExecutionMonitor] Passed {len(indicators)} indicators to visualization")
                 return window
 
             except Exception as e:

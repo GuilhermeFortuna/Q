@@ -18,7 +18,7 @@ from ...trades import TradeRegistry
 class BacktestExecutionThread(QThread):
     """Thread for executing backtests to avoid blocking the UI."""
 
-    backtest_finished = Signal(object)  # TradeRegistry results
+    backtest_finished = Signal(object, object)  # TradeRegistry results, OHLC data with indicators
     backtest_error = Signal(str)  # error message
     progress_updated = Signal(int)  # progress percentage
     status_updated = Signal(str)  # status message
@@ -73,9 +73,16 @@ class BacktestExecutionThread(QThread):
             if self._should_stop:
                 return
 
+            # Capture OHLC data with computed indicators from the engine
+            ohlc_data_with_indicators = None
+            if 'candle' in engine.data and hasattr(engine.data['candle'], 'data'):
+                ohlc_data_with_indicators = engine.data['candle'].data.copy()
+                print(f"[BacktestExecutionThread] Captured OHLC data with {len(ohlc_data_with_indicators.columns)} columns")
+                print(f"[BacktestExecutionThread] Columns: {list(ohlc_data_with_indicators.columns)}")
+
             self.progress_updated.emit(100)
             self.status_updated.emit("Backtest completed")
-            self.backtest_finished.emit(results)
+            self.backtest_finished.emit(results, ohlc_data_with_indicators)
 
         except Exception as e:
             import traceback
@@ -143,7 +150,7 @@ class ExecutionController(QObject):
 
     # Signals
     backtest_started = Signal()
-    backtest_finished = Signal(object)  # TradeRegistry results
+    backtest_finished = Signal(object, object)  # TradeRegistry results, OHLC data with indicators
     backtest_error = Signal(str)  # error message
     progress_updated = Signal(int)  # progress percentage
     status_updated = Signal(str)  # status message
@@ -153,6 +160,7 @@ class ExecutionController(QObject):
         self.backtest_model = backtest_model
         self._execution_thread: Optional[BacktestExecutionThread] = None
         self._current_results: Optional[TradeRegistry] = None
+        self._current_ohlc_data: Optional[Any] = None  # Store OHLC data with computed indicators
         self._is_running = False
 
         # Progress monitoring timer
@@ -226,16 +234,21 @@ class ExecutionController(QObject):
         """Get the results from the last completed backtest."""
         return self._current_results
 
-    def _on_backtest_finished(self, results: TradeRegistry):
+    def get_current_ohlc_data(self) -> Optional[Any]:
+        """Get the OHLC data with computed indicators from the last completed backtest."""
+        return self._current_ohlc_data
+
+    def _on_backtest_finished(self, results: TradeRegistry, ohlc_data_with_indicators: Optional[Any]):
         """Handle backtest completion."""
         self._current_results = results
+        self._current_ohlc_data = ohlc_data_with_indicators
         self._is_running = False
         self._progress_timer.stop()
 
         if self._execution_thread:
             self._execution_thread = None
 
-        self.backtest_finished.emit(results)
+        self.backtest_finished.emit(results, ohlc_data_with_indicators)
 
     def _on_backtest_error(self, error_message: str):
         """Handle backtest errors."""
