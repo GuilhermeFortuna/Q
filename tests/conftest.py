@@ -21,7 +21,7 @@ from src.strategies.signals.base import SignalDecision
 @pytest.fixture
 def sample_ohlcv_data():
     """Basic OHLCV DataFrame for testing."""
-    dates = pd.date_range('2024-01-01', periods=100, freq='1H')
+    dates = pd.date_range('2024-01-01 10:00:00', periods=100, freq='1H')
     np.random.seed(42)  # For reproducible tests
     
     # Generate realistic price data
@@ -77,7 +77,7 @@ def sample_tick_data():
 def candle_data_fixture(sample_ohlcv_data):
     """CandleData instance with realistic multi-day data."""
     # Create data spanning multiple days
-    dates = pd.date_range('2024-01-01', periods=500, freq='1H')
+    dates = pd.date_range('2024-01-01 10:00:00', periods=500, freq='1H')
     np.random.seed(42)
     
     base_price = 100.0
@@ -148,14 +148,14 @@ def trade_registry_fixture(backtest_params_fixture):
         amount=1
     ))
     registry.register_order(TradeOrder(
-        type='sell',
+        type='close',
         price=105.0,
         datetime=base_time + dt.timedelta(hours=1),
         comment='exit',
         amount=1
     ))
     
-    # Trade 2: Losing short trade
+    # Trade 2: Losing short trade (start fresh)
     registry.register_order(TradeOrder(
         type='sell',
         price=105.0,
@@ -164,7 +164,7 @@ def trade_registry_fixture(backtest_params_fixture):
         amount=1
     ))
     registry.register_order(TradeOrder(
-        type='buy',
+        type='close',
         price=108.0,
         datetime=base_time + dt.timedelta(hours=3),
         comment='exit',
@@ -220,8 +220,22 @@ def simple_strategy():
         def compute_indicators(self, data: dict) -> None:
             # Add a simple moving average
             if 'candle' in data:
-                df = data['candle'].df
-                df['sma_10'] = df['close'].rolling(10).mean()
+                candle = data['candle']
+                if hasattr(candle, 'df'):
+                    # Original CandleData
+                    df = candle.df
+                    df['sma_10'] = df['close'].rolling(10).mean()
+                else:
+                    # EngineCandleData - compute SMA on numpy arrays
+                    close_prices = candle.close
+                    if len(close_prices) >= 10:
+                        sma_10 = np.convolve(close_prices, np.ones(10)/10, mode='valid')
+                        # Pad with NaN for the first 9 values
+                        sma_10 = np.concatenate([np.full(9, np.nan), sma_10])
+                        candle.sma_10 = sma_10
+                    else:
+                        # Not enough data for SMA
+                        candle.sma_10 = np.full(len(close_prices), np.nan)
         
         def entry_strategy(self, i: int, data: dict):
             if 'candle' not in data or i < 10:
@@ -245,7 +259,7 @@ def simple_strategy():
             candle = data['candle']
             if i >= 10 and candle.close[i] < candle.sma_10[i]:
                 return TradeOrder(
-                    type='sell',
+                    type='close',
                     price=float(candle.close[i]),
                     datetime=candle.datetime_index[i],
                     comment='sma_crossover_exit',
