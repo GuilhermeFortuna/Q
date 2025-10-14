@@ -1,0 +1,122 @@
+{
+  "day_trading": {
+    "name": "Day Trading",
+    "description": "Optimized for intraday trading with tight risk management",
+    "parameters": {
+      "point_value": 10.0,
+      "cost_per_trade": 2.5,
+      "initial_capital": 10000.0,
+      "max_position_size": 1000.0,
+      "stop_loss_pips": 10,
+      "take_profit_pips": 20,
+      "max_daily_trades": 10,
+      "trading_hours_start": "09:30",
+      "trading_hours_end": "16:00",
+      "risk_per_trade": 1.0,
+      "max_drawdown": 5.0,
+      "position_sizing_method": "fixed_dollar",
+      "enable_day_trading_rules": true,
+      "max_holding_period_hours": 8
+    }
+  },
+  "swing_trading": {
+    "name": "Swing Trading",
+    "description": "Designed for multi-day position holding with wider stops",
+    "parameters": {
+      "point_value": 10.0,
+      "cost_per_trade": 2.5,
+      "initial_capital": 25000.0,
+      "max_position_size": 2500.0,
+      "stop_loss_pips": 50,
+      "take_profit_pips": 100,
+      "max_daily_trades": 3,
+      "trading_hours_start": "09:30",
+      "trading_hours_end": "16:00",
+      "risk_per_trade": 2.0,
+      "max_drawdown": 10.0,
+      "position_sizing_method": "fixed_dollar",
+      "enable_day_trading_rules": false,
+      "max_holding_period_hours": 168
+    }
+  },
+  "scalping": {
+    "name": "Scalping",
+    "description": "High-frequency trading with very tight stops and quick exits",
+    "parameters": {
+      "point_value": 10.0,
+      "cost_per_trade": 1.0,
+      "initial_capital": 5000.0,
+      "max_position_size": 500.0,
+      "stop_loss_pips": 5,
+      "take_profit_pips": 8,
+      "max_daily_trades": 50,
+      "trading_hours_start": "09:30",
+      "trading_hours_end": "16:00",
+      "risk_per_trade": 0.5,
+      "max_drawdown": 3.0,
+      "position_sizing_method": "fixed_dollar",
+      "enable_day_trading_rules": true,
+      "max_holding_period_hours": 1
+    }
+  },
+  "position_trading": {
+    "name": "Position Trading",
+    "description": "Long-term trading with wide stops and large position sizes",
+    "parameters": {
+      "point_value": 10.0,
+      "cost_per_trade": 5.0,
+      "initial_capital": 100000.0,
+      "max_position_size": 10000.0,
+      "stop_loss_pips": 200,
+      "take_profit_pips": 400,
+      "max_daily_trades": 1,
+      "trading_hours_start": "09:30",
+      "trading_hours_end": "16:00",
+      "risk_per_trade": 5.0,
+      "max_drawdown": 20.0,
+      "position_sizing_method": "fixed_dollar",
+      "enable_day_trading_rules": false,
+      "max_holding_period_hours": 720
+    }
+  },
+  "conservative": {
+    "name": "Conservative",
+    "description": "Low-risk approach with small position sizes and wide stops",
+    "parameters": {
+      "point_value": 10.0,
+      "cost_per_trade": 2.5,
+      "initial_capital": 50000.0,
+      "max_position_size": 1000.0,
+      "stop_loss_pips": 30,
+      "take_profit_pips": 60,
+      "max_daily_trades": 5,
+      "trading_hours_start": "09:30",
+      "trading_hours_end": "16:00",
+      "risk_per_trade": 1.0,
+      "max_drawdown": 5.0,
+      "position_sizing_method": "fixed_dollar",
+      "enable_day_trading_rules": false,
+      "max_holding_period_hours": 24
+    }
+  },
+  "aggressive": {
+    "name": "Aggressive",
+    "description": "High-risk, high-reward approach with large position sizes",
+    "parameters": {
+      "point_value": 10.0,
+      "cost_per_trade": 2.5,
+      "initial_capital": 20000.0,
+      "max_position_size": 5000.0,
+      "stop_loss_pips": 15,
+      "take_profit_pips": 30,
+      "max_daily_trades": 20,
+      "trading_hours_start": "09:30",
+      "trading_hours_end": "16:00",
+      "risk_per_trade": 3.0,
+      "max_drawdown": 15.0,
+      "position_sizing_method": "fixed_dollar",
+      "enable_day_trading_rules": true,
+      "max_holding_period_hours": 4
+    }
+  }
+}

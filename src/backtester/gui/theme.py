@@ -10,40 +10,41 @@ from typing import Dict, Optional
 
 class Theme:
     """Centralized theme management for the backtester GUI."""
-    
+
     # Color Palette - JetBrains Inspired
     # Backgrounds (darker than current theme)
-    BACKGROUND_MAIN = "#1C1C1C"          # Main window background
-    BACKGROUND_SECONDARY = "#2B2B2B"     # Panels, cards, secondary areas
-    BACKGROUND_TERTIARY = "#3C3C3C"      # Headers, inactive tabs
-    BACKGROUND_INPUT = "#313335"          # Form fields, input areas
-    BACKGROUND_ELEVATED = "#404040"       # Elevated components
-    
+    BACKGROUND_MAIN = "#1C1C1C"  # Main window background
+    BACKGROUND_SECONDARY = "#2B2B2B"  # Panels, cards, secondary areas
+    BACKGROUND_TERTIARY = "#3C3C3C"  # Headers, inactive tabs
+    BACKGROUND_INPUT = "#313335"  # Form fields, input areas
+    BACKGROUND_ELEVATED = "#404040"  # Elevated components
+
     # Accent Colors (vibrant greens)
-    ACCENT_PRIMARY = "#3BEA62"           # Primary green for main actions
-    ACCENT_HOVER = "#4EFF7A"             # Lighter green for hover states
-    ACCENT_SUCCESS = "#499C54"           # Darker green for success states
-    ACCENT_SELECTION = "#214524"         # Dark green for selections
-    ACCENT_FOCUS = "#2A5A2D"             # Focus ring color
-    
+    ACCENT_PRIMARY = "#3BEA62"  # Primary green for main actions
+    ACCENT_HOVER = "#4EFF7A"  # Lighter green for hover states
+    ACCENT_SUCCESS = "#499C54"  # Darker green for success states
+    ACCENT_SELECTION = "#214524"  # Dark green for selections
+    ACCENT_FOCUS = "#2A5A2D"  # Focus ring color
+    ACCENT_DANGER = "#FF4444"  # Red for errors, destructive actions
+
     # Functional Colors
-    ERROR = "#FF5555"                    # Error red
-    WARNING = "#FF9800"                  # Warning orange
-    INFO = "#7AB4FF"                     # Info blue
-    POSITIVE = "#00FF88"                 # Positive values (charts, equity)
-    NEGATIVE = "#FF4444"                 # Negative values (drawdown, losses)
-    
+    ERROR = "#FF5555"  # Error red
+    WARNING = "#FF9800"  # Warning orange
+    INFO = "#7AB4FF"  # Info blue
+    POSITIVE = "#00FF88"  # Positive values (charts, equity)
+    NEGATIVE = "#FF4444"  # Negative values (drawdown, losses)
+
     # Text Colors
-    TEXT_PRIMARY = "#BBBBBB"             # Primary text
-    TEXT_SECONDARY = "#888888"           # Secondary text
-    TEXT_DISABLED = "#5C5C5C"            # Disabled text
-    TEXT_ACCENT = "#3BEA62"              # Accent text (green)
-    
+    TEXT_PRIMARY = "#BBBBBB"  # Primary text
+    TEXT_SECONDARY = "#888888"  # Secondary text
+    TEXT_DISABLED = "#5C5C5C"  # Disabled text
+    TEXT_ACCENT = "#3BEA62"  # Accent text (green)
+
     # Border Colors
-    BORDER_DEFAULT = "#404040"           # Default borders
-    BORDER_HOVER = "#555555"             # Hover borders
-    BORDER_FOCUS = "#3BEA62"             # Focus borders (green)
-    
+    BORDER_DEFAULT = "#404040"  # Default borders
+    BORDER_HOVER = "#555555"  # Hover borders
+    BORDER_FOCUS = "#3BEA62"  # Focus borders (green)
+
     @classmethod
     def get_main_window_stylesheet(cls) -> str:
         """Get the main window stylesheet."""
@@ -145,7 +146,7 @@ class Theme:
                 border-radius: 2px;
             }}
         """
-    
+
     @classmethod
     def get_button_stylesheet(cls, button_type: str = "primary") -> str:
         """Get button stylesheet based on type."""
@@ -232,7 +233,7 @@ class Theme:
             """
         else:
             return cls.get_button_stylesheet("primary")
-    
+
     @classmethod
     def get_form_stylesheet(cls) -> str:
         """Get form input stylesheet."""
@@ -259,7 +260,7 @@ class Theme:
                 margin-right: 5px;
             }}
         """
-    
+
     @classmethod
     def get_table_stylesheet(cls) -> str:
         """Get table stylesheet."""
@@ -292,7 +293,7 @@ class Theme:
                 background-color: {cls.BACKGROUND_ELEVATED};
             }}
         """
-    
+
     @classmethod
     def get_groupbox_stylesheet(cls) -> str:
         """Get groupbox stylesheet."""
@@ -312,7 +313,7 @@ class Theme:
                 color: {cls.TEXT_PRIMARY};
             }}
         """
-    
+
     @classmethod
     def get_card_stylesheet(cls) -> str:
         """Get card widget stylesheet."""
@@ -326,7 +327,7 @@ class Theme:
                 border-color: {cls.BORDER_HOVER};
             }}
         """
-    
+
     @classmethod
     def get_scroll_area_stylesheet(cls) -> str:
         """Get scroll area stylesheet."""
@@ -353,7 +354,7 @@ class Theme:
                 height: 0px;
             }}
         """
-    
+
     @classmethod
     def get_dialog_stylesheet(cls) -> str:
         """Get dialog stylesheet."""
@@ -367,7 +368,7 @@ class Theme:
                 padding: 6px 12px;
             }}
         """
-    
+
     @classmethod
     def get_widget_base_stylesheet(cls) -> str:
         """Get base widget stylesheet."""
@@ -377,19 +378,19 @@ class Theme:
                 color: {cls.TEXT_PRIMARY};
             }}
         """
-    
+
     @classmethod
     def get_complete_stylesheet(cls) -> str:
         """Get complete application stylesheet."""
         return (
-            cls.get_main_window_stylesheet() +
-            cls.get_form_stylesheet() +
-            cls.get_table_stylesheet() +
-            cls.get_groupbox_stylesheet() +
-            cls.get_card_stylesheet() +
-            cls.get_scroll_area_stylesheet() +
-            cls.get_dialog_stylesheet() +
-            cls.get_widget_base_stylesheet()
+            cls.get_main_window_stylesheet()
+            + cls.get_form_stylesheet()
+            + cls.get_table_stylesheet()
+            + cls.get_groupbox_stylesheet()
+            + cls.get_card_stylesheet()
+            + cls.get_scroll_area_stylesheet()
+            + cls.get_dialog_stylesheet()
+            + cls.get_widget_base_stylesheet()
         )
 
 

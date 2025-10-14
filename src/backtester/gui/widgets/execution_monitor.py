@@ -5,6 +5,8 @@ This module contains the interface for monitoring backtest execution,
 including real-time progress tracking, live metrics, and results display.
 """
 
+import time
+import pandas as pd
 from typing import Optional, Dict, Any, List
 from PySide6.QtWidgets import (
     QWidget,
@@ -31,6 +33,7 @@ from PySide6.QtGui import QFont, QPalette
 from ..models.backtest_model import BacktestModel
 from ..models.strategy_model import StrategyModel
 from ..controllers.execution_controller import ExecutionController
+from .results_panel import ResultsPanelWidget
 
 
 class MetricsCardWidget(QFrame):
@@ -231,17 +234,32 @@ class ProgressWidget(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("%p% - %v/%m")
         layout.addWidget(self.progress_bar)
+
+        # Progress details
+        self.progress_details = QLabel("")
+        self.progress_details.setStyleSheet("color: #888; font-size: 11px;")
+        layout.addWidget(self.progress_details)
 
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setStyleSheet("color: #888;")
         layout.addWidget(self.status_label)
 
-        # ETA label
+        # ETA and speed info
+        eta_layout = QHBoxLayout()
+        
         self.eta_label = QLabel("")
         self.eta_label.setStyleSheet("color: #888; font-size: 10px;")
-        layout.addWidget(self.eta_label)
+        eta_layout.addWidget(self.eta_label)
+        
+        self.speed_label = QLabel("")
+        self.speed_label.setStyleSheet("color: #888; font-size: 10px;")
+        eta_layout.addWidget(self.speed_label)
+        
+        eta_layout.addStretch()
+        layout.addLayout(eta_layout)
 
     def _apply_styling(self):
         """Apply JetBrains-inspired styling to the widget."""
@@ -251,9 +269,27 @@ class ProgressWidget(QWidget):
             theme.get_main_window_stylesheet()
         )
 
-    def set_progress(self, progress: int):
-        """Set the progress percentage."""
+    def set_progress(self, progress: int, details: str = "", eta: str = "", speed: str = ""):
+        """Set the progress percentage with detailed information."""
         self.progress_bar.setValue(progress)
+        
+        if details:
+            self.progress_details.setText(details)
+            self.progress_details.setVisible(True)
+        else:
+            self.progress_details.setVisible(False)
+            
+        if eta:
+            self.eta_label.setText(f"ETA: {eta}")
+            self.eta_label.setVisible(True)
+        else:
+            self.eta_label.setVisible(False)
+            
+        if speed:
+            self.speed_label.setText(f"Speed: {speed}")
+            self.speed_label.setVisible(True)
+        else:
+            self.speed_label.setVisible(False)
 
     def set_status(self, status: str):
         """Set the status message."""
@@ -465,19 +501,14 @@ class ExecutionMonitorWidget(QWidget):
         return widget
 
     def _create_results_tab(self) -> QWidget:
-        """Create the results display tab with integrated visualizer."""
+        """Create the results display tab with integrated results panel."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(5, 5, 5, 5)
 
-        # Create a placeholder widget that will be replaced with visualizer content
-        self.results_placeholder = QLabel("No results available")
-        self.results_placeholder.setAlignment(Qt.AlignCenter)
-        self.results_placeholder.setStyleSheet("color: #888; font-size: 14px;")
-        layout.addWidget(self.results_placeholder)
-
-        # Store reference for the visualizer widget
-        self.results_visualizer_widget = None
+        # Create results panel
+        self.results_panel = ResultsPanelWidget()
+        layout.addWidget(self.results_panel)
 
         return widget
 
@@ -615,7 +646,7 @@ class ExecutionMonitorWidget(QWidget):
         self.update_timer.start()
         self.log_widget.add_log_message("Backtest started")
 
-    def _on_backtest_finished(self, results):
+    def _on_backtest_finished(self, results, ohlc_data_with_indicators):
         """Handle backtest completion."""
         self.run_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
@@ -623,6 +654,10 @@ class ExecutionMonitorWidget(QWidget):
         self.progress_widget.set_status("Backtest completed")
         self.update_timer.stop()
         self.log_widget.add_log_message("Backtest completed successfully")
+        
+        # Load results into the results panel
+        if hasattr(self, 'results_panel') and results:
+            self._load_results_to_panel(results)
 
         # Update results display
         self._update_results_display(results)
@@ -636,8 +671,175 @@ class ExecutionMonitorWidget(QWidget):
         self.log_widget.add_log_message(f"ERROR: {error_message}")
 
     def _on_progress_updated(self, progress: int):
-        """Handle progress updates."""
-        self.progress_widget.set_progress(progress)
+        """Handle progress updates with ETA and speed calculation."""
+        # Calculate ETA and speed if we have timing information
+        current_time = time.time()
+        
+        if not hasattr(self, '_start_time'):
+            self._start_time = current_time
+            self._last_progress_time = current_time
+            self._last_progress = 0
+        
+        # Calculate speed (progress per second)
+        time_elapsed = current_time - self._start_time
+        progress_delta = progress - self._last_progress
+        time_delta = current_time - self._last_progress_time
+        
+        if time_delta > 0 and progress_delta > 0:
+            speed = progress_delta / time_delta  # progress per second
+            speed_text = f"{speed:.1f}%/s"
+        else:
+            speed_text = ""
+        
+        # Calculate ETA
+        if progress > 0 and time_elapsed > 0:
+            total_time_estimated = time_elapsed * (100 / progress)
+            remaining_time = total_time_estimated - time_elapsed
+            if remaining_time > 0:
+                eta_minutes = int(remaining_time // 60)
+                eta_seconds = int(remaining_time % 60)
+                eta_text = f"{eta_minutes:02d}:{eta_seconds:02d}"
+            else:
+                eta_text = "00:00"
+        else:
+            eta_text = ""
+        
+        # Update progress with details
+        details = f"Processing data points..."
+        self.progress_widget.set_progress(progress, details, eta_text, speed_text)
+        
+        # Update tracking variables
+        self._last_progress = progress
+        self._last_progress_time = current_time
+
+    def _load_results_to_panel(self, results):
+        """Load backtest results into the results panel."""
+        try:
+            # Debug: Log results object type and attributes
+            self.log_widget.add_log_message(f"Loading results: type={type(results)}")
+            if hasattr(results, 'trades'):
+                self.log_widget.add_log_message(f"Trades DataFrame shape: {results.trades.shape if not results.trades.empty else 'empty'}")
+            
+            # Convert results to the format expected by the results panel
+            results_data = {
+                'metrics': self._extract_metrics_from_results(results),
+                'trades': self._extract_trades_from_results(results),
+                'equity_curve': self._extract_equity_curve_from_results(results)
+            }
+            
+            # Debug: Log extracted data
+            self.log_widget.add_log_message(f"Extracted metrics: {results_data['metrics']}")
+            self.log_widget.add_log_message(f"Extracted trades count: {len(results_data['trades'])}")
+            self.log_widget.add_log_message(f"Extracted equity curve length: {len(results_data['equity_curve'])}")
+            
+            self.results_panel.load_results(results_data)
+        except Exception as e:
+            self.log_widget.add_log_message(f"Error loading results to panel: {str(e)}")
+
+    def _extract_metrics_from_results(self, results):
+        """Extract metrics from backtest results."""
+        metrics = {}
+        
+        try:
+            if hasattr(results, 'get_result'):
+                # Get the result dictionary from TradeRegistry
+                result_data = results.get_result(return_result=True)
+                
+                if result_data:
+                    # Map TradeRegistry result keys to our expected metrics
+                    metrics['total_return'] = result_data.get('net_balance (BRL)', 0)
+                    metrics['sharpe_ratio'] = 0  # Not directly available in TradeRegistry
+                    metrics['max_drawdown'] = result_data.get('drawdown_relative (%)', 0)
+                    metrics['win_rate'] = result_data.get('accuracy (%)', 0)
+                    metrics['profit_factor'] = result_data.get('profit_factor', 0)
+                    metrics['total_trades'] = result_data.get('total_trades', 0)
+                    metrics['avg_trade'] = result_data.get('mean_profit (BRL)', 0)
+                    metrics['avg_duration'] = 0  # Not directly available in TradeRegistry
+                else:
+                    # If no result data, return zeros
+                    metrics = {
+                        'total_return': 0,
+                        'sharpe_ratio': 0,
+                        'max_drawdown': 0,
+                        'win_rate': 0,
+                        'profit_factor': 0,
+                        'total_trades': 0,
+                        'avg_trade': 0,
+                        'avg_duration': 0
+                    }
+            else:
+                # Fallback: return default metrics
+                metrics = {
+                    'total_return': 0,
+                    'sharpe_ratio': 0,
+                    'max_drawdown': 0,
+                    'win_rate': 0,
+                    'profit_factor': 0,
+                    'total_trades': 0,
+                    'avg_trade': 0,
+                    'avg_duration': 0
+                }
+        except Exception as e:
+            print(f"Error extracting metrics: {e}")
+            # Return default metrics
+            metrics = {
+                'total_return': 0,
+                'sharpe_ratio': 0,
+                'max_drawdown': 0,
+                'win_rate': 0,
+                'profit_factor': 0,
+                'total_trades': 0,
+                'avg_trade': 0,
+                'avg_duration': 0
+            }
+        
+        return metrics
+
+    def _extract_trades_from_results(self, results):
+        """Extract trades from backtest results."""
+        trades = []
+        
+        try:
+            if hasattr(results, 'trades') and not results.trades.empty:
+                # TradeRegistry.trades is a pandas DataFrame
+                for _, trade_row in results.trades.iterrows():
+                    trade_data = {
+                        'date': str(trade_row.get('start', '')),
+                        'symbol': 'N/A',  # Not available in TradeRegistry
+                        'side': 'BUY' if 'buy' in str(trade_row.get('type', '')).lower() else 'SELL',
+                        'quantity': trade_row.get('amount', 0),
+                        'price': trade_row.get('buyprice', 0),
+                        'pnl': trade_row.get('profit', 0),
+                        'duration': str(trade_row.get('end', '') - trade_row.get('start', '')) if pd.notna(trade_row.get('end')) and pd.notna(trade_row.get('start')) else '',
+                        'status': 'Closed' if pd.notna(trade_row.get('end')) else 'Open'
+                    }
+                    trades.append(trade_data)
+        except Exception as e:
+            print(f"Error extracting trades: {e}")
+            # Return empty trades list
+            trades = []
+        
+        return trades
+
+    def _extract_equity_curve_from_results(self, results):
+        """Extract equity curve from backtest results."""
+        try:
+            # Try to extract equity curve data from TradeRegistry
+            if hasattr(results, 'trades') and not results.trades.empty:
+                # Use the balance column from trades as equity curve
+                if 'balance' in results.trades.columns:
+                    # Filter out NaN values and return as list
+                    equity_data = results.trades['balance'].dropna().tolist()
+                    return equity_data
+                else:
+                    # If no balance column, return empty list
+                    return []
+            else:
+                # Return empty list if no trades data found
+                return []
+        except Exception as e:
+            print(f"Error extracting equity curve: {e}")
+            return []
 
     def _on_status_updated(self, status: str):
         """Handle status updates."""
@@ -682,9 +884,41 @@ class ExecutionMonitorWidget(QWidget):
             from src.visualizer.windows.backtest_summary import BacktestSummaryWindow
             from src.visualizer.models import BacktestResultModel
 
-            # Get OHLC data if available
+            # Get OHLC data with computed indicators from execution controller
             ohlc_data = None
-            if hasattr(self.backtest_model, 'get_ohlc_data'):
+            if hasattr(self.execution_controller, 'get_current_ohlc_data'):
+                raw_ohlc_data = self.execution_controller.get_current_ohlc_data()
+                if raw_ohlc_data is not None and not raw_ohlc_data.empty:
+                    # Process OHLC data to ensure proper datetime index
+                    ohlc_data = raw_ohlc_data.copy()
+                    
+                    # Check if we have a datetime index
+                    if not isinstance(ohlc_data.index, pd.DatetimeIndex):
+                        # Try to use datetime column if it exists
+                        if 'datetime' in ohlc_data.columns:
+                            # Convert datetime column to proper datetime type first
+                            ohlc_data['datetime'] = pd.to_datetime(ohlc_data['datetime'])
+                            ohlc_data = ohlc_data.set_index('datetime')
+                        elif 'time' in ohlc_data.columns:
+                            # Try 'time' column as well
+                            ohlc_data['time'] = pd.to_datetime(ohlc_data['time'])
+                            ohlc_data = ohlc_data.set_index('time')
+                    
+                    # Ensure the index is properly formatted and timezone-naive
+                    if isinstance(ohlc_data.index, pd.DatetimeIndex):
+                        # Remove timezone info if present
+                        if ohlc_data.index.tz is not None:
+                            ohlc_data.index = ohlc_data.index.tz_localize(None)
+                        
+                        # Sort by datetime to ensure proper chronological order
+                        ohlc_data = ohlc_data.sort_index()
+                        
+                        # Ensure numeric 'time' column exists for plotting
+                        if 'time' not in ohlc_data.columns:
+                            ohlc_data['time'] = list(range(len(ohlc_data)))
+            
+            # Fallback to backtest model if execution controller doesn't have OHLC data
+            if ohlc_data is None and hasattr(self.backtest_model, 'get_ohlc_data'):
                 raw_ohlc_data = self.backtest_model.get_ohlc_data()
                 if raw_ohlc_data is not None and not raw_ohlc_data.empty:
                     # Process OHLC data to ensure proper datetime index
@@ -722,37 +956,17 @@ class ExecutionMonitorWidget(QWidget):
                 ohlc_df=ohlc_data,
             )
 
-            # Remove the placeholder
-            if self.results_placeholder is not None:
-                self.results_placeholder.setParent(None)
-                self.results_placeholder = None
-
-            # Create the visualizer widget (without the main window wrapper)
-            visualizer_widget = self._create_visualizer_widget(model)
-
-            # Add it to the results tab layout
-            results_layout = self.results_tab.layout()
-            results_layout.addWidget(visualizer_widget)
-
-            # Store reference
-            self.results_visualizer_widget = visualizer_widget
+            # The results panel is now integrated into the results tab
+            # No need to replace placeholder as it's already there
+            # The results panel will be updated via the _load_results_to_panel method
 
             # Also update the Plot Trades tab
             self._update_plot_trades_display(results, ohlc_data)
 
         except Exception as e:
-            # Fallback to simple text display
-            if self.results_placeholder is not None:
-                self.results_placeholder.setText(f"Error displaying results: {str(e)}")
-                self.results_placeholder.setStyleSheet("color: #ff4444;")
-            else:
-                # Create a new placeholder if needed
-                self.results_placeholder = QLabel(f"Error displaying results: {str(e)}")
-                self.results_placeholder.setAlignment(Qt.AlignCenter)
-                self.results_placeholder.setStyleSheet(
-                    "color: #ff4444; font-size: 14px;"
-                )
-                self.results_tab.layout().addWidget(self.results_placeholder)
+            # Log the error but don't try to access non-existent attributes
+            print(f"Error updating results display: {e}")
+            self.log_widget.add_log_message(f"Error updating results display: {str(e)}")
 
     def _create_visualizer_widget(self, model):
         """Create a visualizer widget from the BacktestResultModel."""
@@ -1115,19 +1329,29 @@ class ExecutionMonitorWidget(QWidget):
             indicator_cols = [
                 col for col in ohlc_data.columns if col.lower() not in standard_cols
             ]
+            
+            print(f"[ExecutionMonitor] OHLC data columns: {list(ohlc_data.columns)}")
+            print(f"[ExecutionMonitor] Detected indicator columns: {indicator_cols}")
 
             # Define a cycle of colors for the indicators
             plot_colors = ["#00FFFF", "#FF00FF", "#FFFF00", "#FFA500", "#DA70D6"]
 
             for i, col_name in enumerate(indicator_cols):
+                # Check if the column has valid data
+                col_data = ohlc_data[col_name]
+                valid_data_count = col_data.notna().sum()
+                print(f"[ExecutionMonitor] Indicator '{col_name}': {valid_data_count}/{len(col_data)} valid values")
+                
                 indicators.append(
                     IndicatorConfig(
                         type="line",
-                        y=ohlc_data[col_name],
+                        y=col_data,
                         name=col_name.upper(),
                         color=plot_colors[i % len(plot_colors)],
                     )
                 )
+            
+            print(f"[ExecutionMonitor] Created {len(indicators)} indicator configs")
 
         def open_trades_chart():
             try:
@@ -1180,6 +1404,7 @@ class ExecutionMonitorWidget(QWidget):
                     title="Trades Chart",
                     block=False,
                 )
+                print(f"[ExecutionMonitor] Passed {len(indicators)} indicators to visualization")
                 return window
 
             except Exception as e:

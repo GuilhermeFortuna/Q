@@ -166,6 +166,7 @@ class SignalLibraryWidget(QWidget):
         
         # Refresh button
         refresh_btn = QPushButton("Refresh")
+        refresh_btn.setToolTip("Refresh the signal library (F5)")
         refresh_btn.setFixedSize(80, 28)
         refresh_btn.clicked.connect(self._populate_signals)
         from ..theme import theme
@@ -179,18 +180,24 @@ class SignalLibraryWidget(QWidget):
         search_layout = QVBoxLayout(search_group)
         
         # Search box
-        search_layout.addWidget(QLabel("Search:"))
+        search_label = QLabel("Search:")
+        search_label.setToolTip("Search signals by name, description, or parameters")
+        search_layout.addWidget(search_label)
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Search signals...")
+        self.search_edit.setToolTip("Type to search for signals by name, description, or parameters")
         self.search_edit.textChanged.connect(self._filter_signals)
         search_layout.addWidget(self.search_edit)
         
         # Category filter
         filter_layout = QHBoxLayout()
-        filter_layout.addWidget(QLabel("Category:"))
+        category_label = QLabel("Category:")
+        category_label.setToolTip("Filter signals by category")
+        filter_layout.addWidget(category_label)
         
         self.category_combo = QComboBox()
         self.category_combo.addItems(["All", "Momentum", "Trend", "Volatility", "Volume", "Custom"])
+        self.category_combo.setToolTip("Select a category to filter signals")
         self.category_combo.currentTextChanged.connect(self._filter_signals)
         filter_layout.addWidget(self.category_combo)
         
