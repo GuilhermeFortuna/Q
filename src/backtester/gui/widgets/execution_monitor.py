@@ -6,6 +6,7 @@ including real-time progress tracking, live metrics, and results display.
 """
 
 import time
+import pandas as pd
 from typing import Optional, Dict, Any, List
 from PySide6.QtWidgets import (
     QWidget,
@@ -714,12 +715,22 @@ class ExecutionMonitorWidget(QWidget):
     def _load_results_to_panel(self, results):
         """Load backtest results into the results panel."""
         try:
+            # Debug: Log results object type and attributes
+            self.log_widget.add_log_message(f"Loading results: type={type(results)}")
+            if hasattr(results, 'trades'):
+                self.log_widget.add_log_message(f"Trades DataFrame shape: {results.trades.shape if not results.trades.empty else 'empty'}")
+            
             # Convert results to the format expected by the results panel
             results_data = {
                 'metrics': self._extract_metrics_from_results(results),
                 'trades': self._extract_trades_from_results(results),
                 'equity_curve': self._extract_equity_curve_from_results(results)
             }
+            
+            # Debug: Log extracted data
+            self.log_widget.add_log_message(f"Extracted metrics: {results_data['metrics']}")
+            self.log_widget.add_log_message(f"Extracted trades count: {len(results_data['trades'])}")
+            self.log_widget.add_log_message(f"Extracted equity curve length: {len(results_data['equity_curve'])}")
             
             self.results_panel.load_results(results_data)
         except Exception as e:
@@ -729,18 +740,58 @@ class ExecutionMonitorWidget(QWidget):
         """Extract metrics from backtest results."""
         metrics = {}
         
-        if hasattr(results, 'get_result'):
-            result_data = results.get_result()
-            
-            # Extract key metrics
-            metrics['total_return'] = result_data.get('total_return', 0)
-            metrics['sharpe_ratio'] = result_data.get('sharpe_ratio', 0)
-            metrics['max_drawdown'] = result_data.get('max_drawdown', 0)
-            metrics['win_rate'] = result_data.get('win_rate', 0)
-            metrics['profit_factor'] = result_data.get('profit_factor', 0)
-            metrics['total_trades'] = result_data.get('total_trades', 0)
-            metrics['avg_trade'] = result_data.get('avg_trade', 0)
-            metrics['avg_duration'] = result_data.get('avg_duration', 0)
+        try:
+            if hasattr(results, 'get_result'):
+                # Get the result dictionary from TradeRegistry
+                result_data = results.get_result(return_result=True)
+                
+                if result_data:
+                    # Map TradeRegistry result keys to our expected metrics
+                    metrics['total_return'] = result_data.get('net_balance (BRL)', 0)
+                    metrics['sharpe_ratio'] = 0  # Not directly available in TradeRegistry
+                    metrics['max_drawdown'] = result_data.get('drawdown_relative (%)', 0)
+                    metrics['win_rate'] = result_data.get('accuracy (%)', 0)
+                    metrics['profit_factor'] = result_data.get('profit_factor', 0)
+                    metrics['total_trades'] = result_data.get('total_trades', 0)
+                    metrics['avg_trade'] = result_data.get('mean_profit (BRL)', 0)
+                    metrics['avg_duration'] = 0  # Not directly available in TradeRegistry
+                else:
+                    # If no result data, return zeros
+                    metrics = {
+                        'total_return': 0,
+                        'sharpe_ratio': 0,
+                        'max_drawdown': 0,
+                        'win_rate': 0,
+                        'profit_factor': 0,
+                        'total_trades': 0,
+                        'avg_trade': 0,
+                        'avg_duration': 0
+                    }
+            else:
+                # Fallback: return default metrics
+                metrics = {
+                    'total_return': 0,
+                    'sharpe_ratio': 0,
+                    'max_drawdown': 0,
+                    'win_rate': 0,
+                    'profit_factor': 0,
+                    'total_trades': 0,
+                    'avg_trade': 0,
+                    'avg_duration': 0
+                }
+        except Exception as e:
+            print(f"Error extracting metrics: {e}")
+            # Return default metrics
+            metrics = {
+                'total_return': 0,
+                'sharpe_ratio': 0,
+                'max_drawdown': 0,
+                'win_rate': 0,
+                'profit_factor': 0,
+                'total_trades': 0,
+                'avg_trade': 0,
+                'avg_duration': 0
+            }
         
         return metrics
 
@@ -748,27 +799,47 @@ class ExecutionMonitorWidget(QWidget):
         """Extract trades from backtest results."""
         trades = []
         
-        if hasattr(results, 'trades') and results.trades:
-            for trade in results.trades:
-                trade_data = {
-                    'date': str(trade.start) if hasattr(trade, 'start') else '',
-                    'symbol': trade.symbol if hasattr(trade, 'symbol') else '',
-                    'side': 'BUY' if hasattr(trade, 'type') and 'buy' in str(trade.type).lower() else 'SELL',
-                    'quantity': trade.quantity if hasattr(trade, 'quantity') else 0,
-                    'price': trade.buyprice if hasattr(trade, 'buyprice') else 0,
-                    'pnl': trade.profit if hasattr(trade, 'profit') else 0,
-                    'duration': str(trade.end - trade.start) if hasattr(trade, 'start') and hasattr(trade, 'end') else '',
-                    'status': 'Closed' if hasattr(trade, 'end') else 'Open'
-                }
-                trades.append(trade_data)
+        try:
+            if hasattr(results, 'trades') and not results.trades.empty:
+                # TradeRegistry.trades is a pandas DataFrame
+                for _, trade_row in results.trades.iterrows():
+                    trade_data = {
+                        'date': str(trade_row.get('start', '')),
+                        'symbol': 'N/A',  # Not available in TradeRegistry
+                        'side': 'BUY' if 'buy' in str(trade_row.get('type', '')).lower() else 'SELL',
+                        'quantity': trade_row.get('amount', 0),
+                        'price': trade_row.get('buyprice', 0),
+                        'pnl': trade_row.get('profit', 0),
+                        'duration': str(trade_row.get('end', '') - trade_row.get('start', '')) if pd.notna(trade_row.get('end')) and pd.notna(trade_row.get('start')) else '',
+                        'status': 'Closed' if pd.notna(trade_row.get('end')) else 'Open'
+                    }
+                    trades.append(trade_data)
+        except Exception as e:
+            print(f"Error extracting trades: {e}")
+            # Return empty trades list
+            trades = []
         
         return trades
 
     def _extract_equity_curve_from_results(self, results):
         """Extract equity curve from backtest results."""
-        # This would need to be implemented based on how equity data is stored
-        # For now, return empty list
-        return []
+        try:
+            # Try to extract equity curve data from TradeRegistry
+            if hasattr(results, 'trades') and not results.trades.empty:
+                # Use the balance column from trades as equity curve
+                if 'balance' in results.trades.columns:
+                    # Filter out NaN values and return as list
+                    equity_data = results.trades['balance'].dropna().tolist()
+                    return equity_data
+                else:
+                    # If no balance column, return empty list
+                    return []
+            else:
+                # Return empty list if no trades data found
+                return []
+        except Exception as e:
+            print(f"Error extracting equity curve: {e}")
+            return []
 
     def _on_status_updated(self, status: str):
         """Handle status updates."""
@@ -885,37 +956,17 @@ class ExecutionMonitorWidget(QWidget):
                 ohlc_df=ohlc_data,
             )
 
-            # Remove the placeholder
-            if self.results_placeholder is not None:
-                self.results_placeholder.setParent(None)
-                self.results_placeholder = None
-
-            # Create the visualizer widget (without the main window wrapper)
-            visualizer_widget = self._create_visualizer_widget(model)
-
-            # Add it to the results tab layout
-            results_layout = self.results_tab.layout()
-            results_layout.addWidget(visualizer_widget)
-
-            # Store reference
-            self.results_visualizer_widget = visualizer_widget
+            # The results panel is now integrated into the results tab
+            # No need to replace placeholder as it's already there
+            # The results panel will be updated via the _load_results_to_panel method
 
             # Also update the Plot Trades tab
             self._update_plot_trades_display(results, ohlc_data)
 
         except Exception as e:
-            # Fallback to simple text display
-            if self.results_placeholder is not None:
-                self.results_placeholder.setText(f"Error displaying results: {str(e)}")
-                self.results_placeholder.setStyleSheet("color: #ff4444;")
-            else:
-                # Create a new placeholder if needed
-                self.results_placeholder = QLabel(f"Error displaying results: {str(e)}")
-                self.results_placeholder.setAlignment(Qt.AlignCenter)
-                self.results_placeholder.setStyleSheet(
-                    "color: #ff4444; font-size: 14px;"
-                )
-                self.results_tab.layout().addWidget(self.results_placeholder)
+            # Log the error but don't try to access non-existent attributes
+            print(f"Error updating results display: {e}")
+            self.log_widget.add_log_message(f"Error updating results display: {str(e)}")
 
     def _create_visualizer_widget(self, model):
         """Create a visualizer widget from the BacktestResultModel."""
