@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QMessageBox,
     QApplication,
+    QDialog,
 )
+from PySide6.QtCore import Qt, QTimer
 
 from src.helper import PROJECT_ROOT
 from .controllers.execution_controller import ExecutionController
@@ -231,16 +233,20 @@ class BacktesterMainWindow(QMainWindow):
         edit_menu = menubar.addMenu("&Edit")
 
         # Undo
-        undo_action = QAction("&Undo", self)
-        undo_action.setShortcut(QKeySequence.Undo)
-        undo_action.setStatusTip("Undo last action")
-        edit_menu.addAction(undo_action)
+        self.undo_action = QAction("&Undo", self)
+        self.undo_action.setShortcut(QKeySequence.Undo)
+        self.undo_action.setStatusTip("Undo last action")
+        self.undo_action.triggered.connect(self._undo)
+        self.undo_action.setEnabled(False)
+        edit_menu.addAction(self.undo_action)
 
         # Redo
-        redo_action = QAction("&Redo", self)
-        redo_action.setShortcut(QKeySequence.Redo)
-        redo_action.setStatusTip("Redo last action")
-        edit_menu.addAction(redo_action)
+        self.redo_action = QAction("&Redo", self)
+        self.redo_action.setShortcut(QKeySequence.Redo)
+        self.redo_action.setStatusTip("Redo last action")
+        self.redo_action.triggered.connect(self._redo)
+        self.redo_action.setEnabled(False)
+        edit_menu.addAction(self.redo_action)
 
         # View Menu
         view_menu = menubar.addMenu("&View")
@@ -309,6 +315,7 @@ class BacktesterMainWindow(QMainWindow):
 
         # Run backtest button
         self.run_backtest_action = QAction("Run Backtest", self)
+        self.run_backtest_action.setShortcut("Ctrl+R")
         self.run_backtest_action.setStatusTip(
             "Execute backtest with current configuration"
         )
@@ -318,10 +325,18 @@ class BacktesterMainWindow(QMainWindow):
 
         # Stop backtest button
         self.stop_backtest_action = QAction("Stop Backtest", self)
+        self.stop_backtest_action.setShortcut("Ctrl+Shift+R")
         self.stop_backtest_action.setStatusTip("Stop running backtest")
         self.stop_backtest_action.triggered.connect(self._stop_backtest)
         self.stop_backtest_action.setEnabled(False)
         toolbar.addAction(self.stop_backtest_action)
+
+        # Refresh action
+        refresh_action = QAction("Refresh", self)
+        refresh_action.setShortcut("F5")
+        refresh_action.setStatusTip("Refresh current view")
+        refresh_action.triggered.connect(self._refresh_current_view)
+        toolbar.addAction(refresh_action)
 
     def _create_status_bar(self):
         """Create the application status bar."""
@@ -336,9 +351,25 @@ class BacktesterMainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.status_bar.addPermanentWidget(self.progress_bar)
 
+        # Memory usage indicator
+        self.memory_label = QLabel("Memory: --")
+        self.memory_label.setToolTip("Current memory usage")
+        self.status_bar.addPermanentWidget(self.memory_label)
+
+        # Last action timestamp
+        self.last_action_label = QLabel("")
+        self.last_action_label.setToolTip("Last action performed")
+        self.status_bar.addPermanentWidget(self.last_action_label)
+
         # Connection status
         self.connection_label = QLabel("Disconnected")
+        self.connection_label.setToolTip("Data source connection status")
         self.status_bar.addPermanentWidget(self.connection_label)
+
+        # Start memory monitoring timer
+        self.memory_timer = QTimer()
+        self.memory_timer.timeout.connect(self._update_memory_usage)
+        self.memory_timer.start(5000)  # Update every 5 seconds
 
     def _setup_connections(self):
         """Setup signal connections between components."""
@@ -356,6 +387,81 @@ class BacktesterMainWindow(QMainWindow):
         self.execution_controller.backtest_error.connect(self._on_backtest_error)
         self.execution_controller.progress_updated.connect(self._on_progress_updated)
 
+        # Connect undo/redo signals
+        self.strategy_model.undo_available_changed.connect(self._on_undo_available_changed)
+        self.strategy_model.redo_available_changed.connect(self._on_redo_available_changed)
+
+        # Setup keyboard shortcuts
+        self._setup_keyboard_shortcuts()
+
+    def _setup_keyboard_shortcuts(self):
+        """Setup additional keyboard shortcuts."""
+        # Tab switching shortcuts
+        tab_shortcuts = [
+            ("Ctrl+1", lambda: self.tab_widget.setCurrentIndex(0)),
+            ("Ctrl+2", lambda: self.tab_widget.setCurrentIndex(1)),
+            ("Ctrl+3", lambda: self.tab_widget.setCurrentIndex(2)),
+            ("Ctrl+4", lambda: self.tab_widget.setCurrentIndex(3)),
+        ]
+        
+        for shortcut, callback in tab_shortcuts:
+            action = QAction(self)
+            action.setShortcut(shortcut)
+            action.triggered.connect(callback)
+            self.addAction(action)
+
+    def keyPressEvent(self, event):
+        """Handle key press events."""
+        if event.key() == Qt.Key_Escape:
+            # Close any open dialogs or cancel current operation
+            self._handle_escape_key()
+        else:
+            super().keyPressEvent(event)
+
+    def _handle_escape_key(self):
+        """Handle escape key press."""
+        # Close any open dialogs
+        for child in self.findChildren(QDialog):
+            if child.isVisible():
+                child.reject()
+                return
+        
+        # Cancel current operation if any
+        if self.execution_controller.is_running():
+            self._stop_backtest()
+
+    def _undo(self):
+        """Undo the last operation."""
+        if self.strategy_model.undo():
+            self._update_status("Undo: " + (self.strategy_model.get_undo_description() or "Unknown"))
+        else:
+            self._update_status("Nothing to undo")
+
+    def _redo(self):
+        """Redo the last undone operation."""
+        if self.strategy_model.redo():
+            self._update_status("Redo: " + (self.strategy_model.get_redo_description() or "Unknown"))
+        else:
+            self._update_status("Nothing to redo")
+
+    def _on_undo_available_changed(self, available: bool):
+        """Handle undo availability change."""
+        self.undo_action.setEnabled(available)
+        if available:
+            description = self.strategy_model.get_undo_description()
+            self.undo_action.setStatusTip(f"Undo: {description}")
+        else:
+            self.undo_action.setStatusTip("Undo last action")
+
+    def _on_redo_available_changed(self, available: bool):
+        """Handle redo availability change."""
+        self.redo_action.setEnabled(available)
+        if available:
+            description = self.strategy_model.get_redo_description()
+            self.redo_action.setStatusTip(f"Redo: {description}")
+        else:
+            self.redo_action.setStatusTip("Redo last action")
+
     def _apply_styling(self):
         """Apply JetBrains-inspired dark theme styling to the application."""
         from .theme import theme
@@ -365,6 +471,42 @@ class BacktesterMainWindow(QMainWindow):
     def _update_status(self, message: str):
         """Update the status bar message."""
         self.status_label.setText(message)
+        self._update_last_action(message)
+
+    def _update_last_action(self, action: str):
+        """Update the last action timestamp."""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.last_action_label.setText(f"Last: {timestamp}")
+        self.last_action_label.setToolTip(f"Last action: {action} at {timestamp}")
+
+    def _update_memory_usage(self):
+        """Update memory usage display."""
+        try:
+            import psutil
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            self.memory_label.setText(f"Memory: {memory_mb:.1f} MB")
+        except ImportError:
+            self.memory_label.setText("Memory: --")
+        except Exception:
+            self.memory_label.setText("Memory: Error")
+
+    def _refresh_current_view(self):
+        """Refresh the current view."""
+        current_tab = self.tab_widget.currentIndex()
+        if current_tab == 0:  # Strategy Builder
+            self.strategy_builder._refresh_strategy()
+            self._update_status("Strategy builder refreshed")
+        elif current_tab == 1:  # Data Configuration
+            self.data_config._refresh_statistics()
+            self._update_status("Data configuration refreshed")
+        elif current_tab == 2:  # Backtest Configuration
+            self.backtest_config._load_config()
+            self._update_status("Backtest configuration refreshed")
+        elif current_tab == 3:  # Execution Monitor
+            self.execution_monitor._refresh_display()
+            self._update_status("Execution monitor refreshed")
 
     def _update_window_title(self):
         """Update the window title to show current file."""

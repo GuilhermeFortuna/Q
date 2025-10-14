@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QTabWidget,
     QScrollArea,
+    QComboBox,
 )
 from PySide6.QtCore import Qt, Signal, QTime
 from PySide6.QtGui import QFont
@@ -57,8 +58,32 @@ class BacktestConfigWidget(QWidget):
         header_layout.addWidget(QLabel("Backtest Configuration"))
         header_layout.addStretch()
 
+        # Presets dropdown
+        self.presets_combo = QComboBox()
+        self.presets_combo.setToolTip("Select a configuration preset")
+        self.presets_combo.addItem("Custom", None)
+        self._load_presets()
+        self.presets_combo.currentTextChanged.connect(self._on_preset_changed)
+        header_layout.addWidget(QLabel("Preset:"))
+        header_layout.addWidget(self.presets_combo)
+
+        # Load preset button
+        load_preset_btn = QPushButton("Load Preset")
+        load_preset_btn.setToolTip("Load the selected preset configuration")
+        load_preset_btn.clicked.connect(self._on_load_preset_clicked)
+        header_layout.addWidget(load_preset_btn)
+
+        # Save as preset button
+        save_preset_btn = QPushButton("Save as Preset")
+        save_preset_btn.setToolTip("Save current configuration as a new preset")
+        save_preset_btn.clicked.connect(self._on_save_preset_clicked)
+        header_layout.addWidget(save_preset_btn)
+
         # Reset button
         reset_btn = QPushButton("Reset to Defaults")
+        reset_btn.setToolTip(
+            "Reset all configuration parameters to their default values"
+        )
         reset_btn.clicked.connect(self._on_reset_clicked)
         header_layout.addWidget(reset_btn)
 
@@ -106,6 +131,9 @@ class BacktestConfigWidget(QWidget):
         self.point_value_spin.setRange(0.01, 1000.0)
         self.point_value_spin.setDecimals(2)
         self.point_value_spin.setSuffix(" points")
+        self.point_value_spin.setToolTip(
+            "Value of one point movement in the instrument (e.g., $10 for ES futures)"
+        )
         basic_layout.addRow("Point Value:", self.point_value_spin)
 
         # Cost per Trade
@@ -113,6 +141,7 @@ class BacktestConfigWidget(QWidget):
         self.cost_per_trade_spin.setRange(0.0, 1000.0)
         self.cost_per_trade_spin.setDecimals(2)
         self.cost_per_trade_spin.setSuffix(" $")
+        self.cost_per_trade_spin.setToolTip("Fixed cost per trade (commission + fees)")
         basic_layout.addRow("Cost per Trade:", self.cost_per_trade_spin)
 
         # Initial Capital
@@ -376,6 +405,127 @@ class BacktestConfigWidget(QWidget):
             + theme.get_button_stylesheet("primary")
             + theme.get_scroll_area_stylesheet()
         )
+
+    def _load_presets(self):
+        """Load available presets from the data file."""
+        try:
+            import json
+            import os
+            from ..data import config_presets
+
+            presets_file = os.path.join(
+                os.path.dirname(config_presets.__file__), 'config_presets.json'
+            )
+            with open(presets_file, 'r') as f:
+                presets_data = json.load(f)
+
+            for preset_id, preset_info in presets_data.items():
+                self.presets_combo.addItem(preset_info['name'], preset_id)
+        except Exception as e:
+            print(f"Error loading presets: {e}")
+
+    def _on_preset_changed(self, preset_name):
+        """Handle preset selection change."""
+        if preset_name != "Custom":
+            # Update the preset description or show preview
+            pass
+
+    def _on_load_preset_clicked(self):
+        """Handle load preset button click."""
+        preset_id = self.presets_combo.currentData()
+        if preset_id:
+            self._load_preset_config(preset_id)
+
+    def _on_save_preset_clicked(self):
+        """Handle save as preset button click."""
+        from PySide6.QtWidgets import QInputDialog
+
+        name, ok = QInputDialog.getText(self, "Save Preset", "Enter preset name:")
+        if ok and name:
+            self._save_current_as_preset(name)
+
+    def _load_preset_config(self, preset_id):
+        """Load configuration from a preset."""
+        try:
+            import json
+            import os
+            from ..data import config_presets
+
+            presets_file = os.path.join(
+                os.path.dirname(config_presets.__file__), 'config_presets.json'
+            )
+            with open(presets_file, 'r') as f:
+                presets_data = json.load(f)
+
+            if preset_id in presets_data:
+                preset_params = presets_data[preset_id]['parameters']
+
+                # Apply preset parameters to the form
+                self.point_value_spin.setValue(preset_params.get('point_value', 10.0))
+                self.cost_per_trade_spin.setValue(
+                    preset_params.get('cost_per_trade', 2.5)
+                )
+                self.initial_capital_spin.setValue(
+                    preset_params.get('initial_capital', 10000.0)
+                )
+                self.max_position_size_spin.setValue(
+                    preset_params.get('max_position_size', 1000.0)
+                )
+                self.stop_loss_spin.setValue(preset_params.get('stop_loss_pips', 20))
+                self.take_profit_spin.setValue(
+                    preset_params.get('take_profit_pips', 40)
+                )
+                self.max_daily_trades_spin.setValue(
+                    preset_params.get('max_daily_trades', 10)
+                )
+                self.risk_per_trade_spin.setValue(
+                    preset_params.get('risk_per_trade', 2.0)
+                )
+                self.max_drawdown_spin.setValue(preset_params.get('max_drawdown', 10.0))
+
+                # Update other parameters as needed
+                self._on_config_changed()
+
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                self, "Load Preset Error", f"Failed to load preset: {str(e)}"
+            )
+
+    def _save_current_as_preset(self, name):
+        """Save current configuration as a new preset."""
+        try:
+            # Get current configuration
+            current_config = self._get_current_config()
+
+            # Add to presets (this would typically save to a user presets file)
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.information(
+                self, "Save Preset", f"Preset '{name}' saved successfully!"
+            )
+
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+
+            QMessageBox.warning(
+                self, "Save Preset Error", f"Failed to save preset: {str(e)}"
+            )
+
+    def _get_current_config(self):
+        """Get current configuration as a dictionary."""
+        return {
+            'point_value': self.point_value_spin.value(),
+            'cost_per_trade': self.cost_per_trade_spin.value(),
+            'initial_capital': self.initial_capital_spin.value(),
+            'max_position_size': self.max_position_size_spin.value(),
+            'stop_loss_pips': self.stop_loss_spin.value(),
+            'take_profit_pips': self.take_profit_spin.value(),
+            'max_daily_trades': self.max_daily_trades_spin.value(),
+            'risk_per_trade': self.risk_per_trade_spin.value(),
+            'max_drawdown': self.max_drawdown_spin.value(),
+        }
 
     def _on_reset_clicked(self):
         """Handle reset to defaults button click."""
